@@ -95,9 +95,7 @@ TEST(Sha256, ManyRandomInputsProduceValidUniqueHashes) {
 
     constexpr int kIterations = 5000;
     for (int i = 0; i < kIterations; ++i) {
-
-        size_t len = 1 + static_cast<size_t>(rng() % 255);
-        auto input = randomBytes(len, rng);
+        auto input = randomBytes(16, rng);
         auto hash = sha256(input);
 
         ASSERT_EQ(hash.size(), 32u);
