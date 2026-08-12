@@ -14,6 +14,7 @@ add_executable(forgechain_tests
 )
 
 target_link_libraries(forgechain_tests PRIVATE
+crypto
     GTest::gtest_main
     project_warnings
 )
