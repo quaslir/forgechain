@@ -1,0 +1,39 @@
+# Build output
+build/
+cmake-build-*/
+out/
+
+# CMake artifacts (in case of in-source misconfiguration)
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Compiled objects / binaries
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# IDE / editor
+.vscode/
+.idea/
+.cache/
+*.swp
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs from local multi-node testing
+*.log
+scripts/logs/
