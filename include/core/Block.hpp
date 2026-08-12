@@ -1,6 +1,10 @@
 #include <cstdint>
 #include <vector>
+#pragma once
 #include "crypto/Hash.hpp"
+
+namespace forgechain::core {
+
 using forgechain::crypto::HashBytes;
 class Block {
     public:
@@ -15,8 +19,9 @@ class Block {
     HashBytes hash_;
 
     Block(uint32_t version, HashBytes prev_hash, uint64_t timestamp);
-    void serialize();
+    [[nodiscard]] std::vector<uint8_t> serialize() const;
 
     private:
-    HashBytes compute_hash();
+    [[nodiscard]] HashBytes compute_hash() const;
 };
+}
