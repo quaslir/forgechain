@@ -1,6 +1,6 @@
 # ForgeChain
 
-[![CI](https://github.com/quaslir/forgechain/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/forgechain/actions/workflows/ci.yml)
+[![CI](https://github.com/quaslir/forgechain/actions/workflows/ci.yml/badge.svg)](https://github.com/quaslir/forgechain/actions/workflows/ci.yml)
 
 A blockchain built from first principles in C++ — no frameworks, no shortcuts. 
 The goal isn't to reinvent Bitcoin, it's to actually understand how distributed 
