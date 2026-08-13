@@ -7,8 +7,7 @@
 namespace forgechain::core {
 
 using forgechain::crypto::HashBytes;
-class Block {
-    public:
+struct Block {
     uint32_t version_;
     HashBytes prev_hash_;
     HashBytes merkle_root_;
@@ -19,10 +18,9 @@ class Block {
     //std::vector<Transaction> transactions_;
     HashBytes hash_;
 
-    Block(uint32_t version, HashBytes prev_hash, uint64_t timestamp);
+                    Block(uint32_t version, HashBytes prev_hash, uint64_t timestamp);
 
-        [[nodiscard]] HashBytes compute_hash() const;
-    private:
-            [[nodiscard]] std::vector<uint8_t> serialize() const;
+                    [[nodiscard]] HashBytes compute_hash() const;
+                    [[nodiscard]] std::vector<uint8_t> serialize() const;
 };
 }

@@ -1,6 +1,4 @@
-#define private public
 #include "core/Block.hpp"
-#undef private
 #include "crypto/Hash.hpp"
 #include <gtest/gtest.h>
 
