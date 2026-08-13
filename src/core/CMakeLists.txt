@@ -1,5 +1,6 @@
 add_library(core
    Block.cpp
+   Blockchain.cpp
 )
 
 target_include_directories(core PUBLIC ${CMAKE_SOURCE_DIR}/src)
