@@ -20,6 +20,7 @@ namespace forgechain::core {
             reinterpret_cast<const uint8_t *>(&version_) + sizeof(version_));
 
         out.insert(out.end(), prev_hash_.begin(), prev_hash_.end());
+
         out.insert(out.end(), merkle_root_.begin(), merkle_root_.end());
 
         out.insert(out.end(), reinterpret_cast<const uint8_t *>(&timestamp_),
