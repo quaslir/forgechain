@@ -1,6 +1,7 @@
+#pragma once
 #include <cstdint>
 #include <vector>
-#pragma once
+
 #include "crypto/Hash.hpp"
 
 namespace forgechain::core {
