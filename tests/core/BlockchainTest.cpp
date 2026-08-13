@@ -91,7 +91,7 @@ TEST(Blockchain, AddingManyBlocksScalesSizeCorrectly) {
 
     constexpr int kBlocksToAdd = 500;
     for (int i = 0; i < kBlocksToAdd; ++i) {
-        Block next(1, chain.latest().hash_, 1700000000ULL + static_cast<uint64_t>(i));
+        Block next(1, chain.latest().hash_, static_cast<uint64_t>(1700000000) + static_cast<uint64_t>(i));
         chain.add_block(next);
     }
 
@@ -125,7 +125,7 @@ TEST(Blockchain, SizeMatchesNumberOfBlocksAdded) {
     EXPECT_EQ(chain.size(), 1u);
 
     for (int i = 0; i < 10; ++i) {
-        Block next(1, chain.latest().hash_, 1700000000ULL + static_cast<uint64_t>(i));
+        Block next(1, chain.latest().hash_, static_cast<uint64_t>(1700000000) + static_cast<uint64_t>(i));
         chain.add_block(next);
         EXPECT_EQ(chain.size(), static_cast<size_t>(i + 2));
     }
