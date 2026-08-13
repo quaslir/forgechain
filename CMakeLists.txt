@@ -22,6 +22,9 @@ add_library(project_warnings INTERFACE)
 target_compile_options(project_warnings INTERFACE
     -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion
 )
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(project_warnings INTERFACE -Wno-array-bounds)
+endif()
 if(ENABLE_WARNINGS_AS_ERRORS)
     target_compile_options(project_warnings INTERFACE -Werror)
 endif()
