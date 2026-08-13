@@ -3,6 +3,7 @@ add_executable(forgechain main.cpp)
 target_link_libraries(forgechain PRIVATE
     core
     crypto
+    consensus
     project_warnings
 )
 
