@@ -11,10 +11,12 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(forgechain_tests
     crypto/HashTest.cpp
+    core/BlockTest.cpp
 )
 
 target_link_libraries(forgechain_tests PRIVATE
 crypto
+core
     GTest::gtest_main
     project_warnings
 )
