@@ -14,6 +14,7 @@ add_executable(forgechain_tests
     core/BlockTest.cpp
     core/BlockchainTest.cpp
      consensus/ProofOfWorkTest.cpp
+     consensus/RetargetTest.cpp
 )
 
 target_link_libraries(forgechain_tests PRIVATE

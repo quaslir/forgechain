@@ -46,4 +46,12 @@ namespace forgechain::consensus {
     }
           throw std::runtime_error("mine_block: exhausted nonce range without finding a valid hash");
     }
+
+    uint32_t retarget(uint32_t old_difficulty, uint64_t actual_time_seconds,uint64_t expected_time_seconds) {
+                           uint32_t new_difficulty = old_difficulty;
+
+                           if(actual_time_seconds < expected_time_seconds / 2 && new_difficulty < std::numeric_limits<uint32_t>::max()) new_difficulty++;
+                           else if(actual_time_seconds > expected_time_seconds * 2 && new_difficulty > 0) new_difficulty--;
+                           return new_difficulty;
+                       }
 }
