@@ -19,9 +19,9 @@ class Block {
     HashBytes hash_;
 
     Block(uint32_t version, HashBytes prev_hash, uint64_t timestamp);
-    [[nodiscard]] std::vector<uint8_t> serialize() const;
 
+        [[nodiscard]] HashBytes compute_hash() const;
     private:
-    [[nodiscard]] HashBytes compute_hash() const;
+            [[nodiscard]] std::vector<uint8_t> serialize() const;
 };
 }
