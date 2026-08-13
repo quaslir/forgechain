@@ -246,6 +246,18 @@ TEST(BlockchainValidation, ValidAfterManyBlocksWithNoTampering) {
     EXPECT_TRUE(chain.is_valid());
 }
 
+TEST(BlockchainValidation, DetectsReorderedBlocks) {
+    Blockchain chain;
+
+    Block first(1, chain.latest().hash_, 1700000001);
+    Block second(1, first.hash_, 1700000002);
+
+    chain.add_block(second);
+    chain.add_block(first);
+
+    EXPECT_FALSE(chain.is_valid());
+}
+
 TEST(BlockchainValidation, InvalidStaysInvalidEvenWithMoreHonestBlocksAfter) {
     Blockchain chain;
 
