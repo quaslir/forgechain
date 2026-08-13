@@ -1,4 +1,6 @@
+#define private public
 #include "core/Block.hpp"
+#undef private
 #include "crypto/Hash.hpp"
 #include <gtest/gtest.h>
 
@@ -6,6 +8,7 @@
 #include <string>
 #include <cstdint>
 #include <cstddef>
+
 using namespace forgechain::core;
 using forgechain::crypto::HashBytes;
 

@@ -17,6 +17,11 @@ class Blockchain {
 
        [[nodiscard]] size_t size() const;
 
+       [[nodiscard]] bool is_valid() const;
+       [[nodiscard]] bool empty() const;
+       [[nodiscard]] const Block& operator[](size_t height) const;
+
+
     private:
         std::vector<Block> blocks_;
 };
