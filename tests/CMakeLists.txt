@@ -13,11 +13,13 @@ add_executable(forgechain_tests
     crypto/HashTest.cpp
     core/BlockTest.cpp
     core/BlockchainTest.cpp
+     consensus/ProofOfWorkTest.cpp
 )
 
 target_link_libraries(forgechain_tests PRIVATE
 crypto
 core
+consensus
     GTest::gtest_main
     project_warnings
 )
