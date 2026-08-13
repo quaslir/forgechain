@@ -130,7 +130,7 @@ TEST(Block, ManyDistinctBlocksProduceUniqueHashes) {
 
         Block block(static_cast<uint32_t>(i),
                     prevHash,
-                    1700000000ULL + static_cast<uint64_t>(i));
+                    static_cast<uint64_t>(1700000000) + static_cast<uint64_t>(i));
 
         seenHashes.insert(forgechain::crypto::to_hex(block.hash_));
     }
