@@ -7,22 +7,21 @@
 namespace forgechain::core {
 using forgechain::core::Block;
 class Blockchain {
-    public:
-        Blockchain();
+public:
+  Blockchain();
 
-        void add_block(const Block& block);
+  void add_block(const Block &block);
 
-       [[nodiscard]] const Block& latest() const;
-       [[nodiscard]] const Block& at(size_t height) const;
+  [[nodiscard]] const Block &latest() const;
+  [[nodiscard]] const Block &at(size_t height) const;
 
-       [[nodiscard]] size_t size() const;
+  [[nodiscard]] size_t size() const;
 
-       [[nodiscard]] bool is_valid() const;
-       [[nodiscard]] bool empty() const;
-       [[nodiscard]] const Block& operator[](size_t height) const;
+  [[nodiscard]] bool is_valid() const;
+  [[nodiscard]] bool empty() const;
+  [[nodiscard]] const Block &operator[](size_t height) const;
 
-
-    private:
-        std::vector<Block> blocks_;
+private:
+  std::vector<Block> blocks_;
 };
-}
+} // namespace forgechain::core
