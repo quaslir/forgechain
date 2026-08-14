@@ -1,6 +1,7 @@
 add_library(crypto
     Hash.cpp
     Keys.cpp
+    Signature.cpp
 )
 
 target_include_directories(crypto PUBLIC

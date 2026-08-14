@@ -1,5 +1,5 @@
 #include "core/Blockchain.hpp"
-#include "crypto/Hash.hpp"
+#include "crypto/CommonTypes.hpp"
 #include "core/Block.hpp"
 #include <cstddef>
 namespace forgechain::core {

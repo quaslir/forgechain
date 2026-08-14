@@ -1,5 +1,5 @@
 #include "core/Transaction.hpp"
-#include "crypto/Hash.hpp"
+#include "crypto/CommonTypes.hpp"
 #include <cstdint>
 #include <utility>
 namespace forgechain::core {

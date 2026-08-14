@@ -1,12 +1,11 @@
 #include "crypto/Keys.hpp"
-#include "crypto/Hash.hpp"
+#include "crypto/OpenSSLTypes.hpp"
 #include <cstddef>
 #include <openssl/evp.h>
 #include <openssl/ec.h>
 #include <openssl/obj_mac.h>
 #include <openssl/bn.h>
 #include <stdexcept>
-
 namespace forgechain::crypto {
     KeyPair generate_keypair() {
       unique_evp_pkey_ctx ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_EC, nullptr));
@@ -45,4 +44,6 @@ namespace forgechain::crypto {
       EC_POINT_point2oct(group, pub_point, POINT_CONVERSION_UNCOMPRESSED, public_key.data(), pub_len, nullptr);
       return KeyPair(public_key, private_key);
     }
+
+
 }
