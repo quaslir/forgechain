@@ -1,6 +1,7 @@
 #include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
 #include "crypto/Hash.hpp"
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -48,10 +49,36 @@ namespace forgechain::consensus {
     }
 
     uint32_t retarget(uint32_t old_difficulty, uint64_t actual_time_seconds,uint64_t expected_time_seconds) {
-                           uint32_t new_difficulty = old_difficulty;
+        if(actual_time_seconds == 0) {
+            actual_time_seconds = 1;
+        }
+        if(expected_time_seconds == 0) {
+            return old_difficulty;
+        }
+        double ratio = static_cast<double>(expected_time_seconds) / static_cast<double>(actual_time_seconds);
+        double delta_bits = std::log2(ratio);
+        long long rounded_delta = std::llround(delta_bits);
+        constexpr long long kMaxStepBits = 2;
+        if(rounded_delta > kMaxStepBits) rounded_delta = kMaxStepBits;
+        else if(rounded_delta < -kMaxStepBits) rounded_delta = -kMaxStepBits;
 
-                           if(actual_time_seconds < expected_time_seconds / 2 && new_difficulty < std::numeric_limits<uint32_t>::max()) new_difficulty++;
-                           else if(actual_time_seconds > expected_time_seconds * 2 && new_difficulty > 0) new_difficulty--;
-                           return new_difficulty;
-                       }
+        if(rounded_delta > 0) {
+            uint64_t new_difficulty = static_cast<uint64_t>(old_difficulty) + static_cast<uint64_t>(rounded_delta);
+            if(new_difficulty > std::numeric_limits<uint32_t>::max()) {
+                new_difficulty = std::numeric_limits<uint32_t>::max();
+            }
+
+            return static_cast<uint32_t>(new_difficulty);
+        }
+        else if(rounded_delta < 0) {
+            auto decrease = static_cast<uint64_t>(-rounded_delta);
+            if(decrease >= old_difficulty) {
+                return 0;
+            }
+
+            return old_difficulty - static_cast<uint32_t>(decrease);
+        }
+
+        return old_difficulty;
+}
 }
