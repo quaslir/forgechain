@@ -11,6 +11,7 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(forgechain_tests
     crypto/HashTest.cpp
+    crypto/KeysTest.cpp
     core/BlockTest.cpp
     core/BlockchainTest.cpp
      consensus/ProofOfWorkTest.cpp
