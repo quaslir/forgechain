@@ -1,7 +1,6 @@
 #pragma once
-#include "crypto/Hash.hpp"
 #include <cstdint>
-#include <string>
+#include "crypto/CommonTypes.hpp"
 namespace forgechain::core {
     using forgechain::crypto::str;
     using forgechain::crypto::bytes;
