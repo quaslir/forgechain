@@ -13,6 +13,7 @@ namespace forgechain::crypto {
         if(!ec_key) {
             throw std::runtime_error("EC_KEY_new_by_curve_name failed");
         }
+
        unique_bn bn(BN_bin2bn(private_key.data(), static_cast<int>(private_key.size()), nullptr));
         if(!bn) {
             throw std::runtime_error("BN_bin2bn failed");
@@ -41,7 +42,9 @@ namespace forgechain::crypto {
         if(EC_KEY_set_public_key(ec_key.get(), pub_point.get()) != 1) {
             throw std::runtime_error("EC_KEY_set_public_key failed");
         }
-
+        if(EC_KEY_check_key(ec_key.get()) != 1) {
+            throw std::runtime_error("invalid private key");
+        }
         unique_evp_pkey pkey(EVP_PKEY_new());
         if(!pkey) {
             throw std::runtime_error("EVP_PKEY_new failed");
