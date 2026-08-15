@@ -1,5 +1,6 @@
 #include "core/Block.hpp"
 #include "crypto/Hash.hpp"
+#include "crypto/CommonTypes.hpp"
 #include <cstdint>
 
 namespace forgechain::core {
