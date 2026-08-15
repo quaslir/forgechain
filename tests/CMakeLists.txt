@@ -16,6 +16,7 @@ function(add_forgechain_test_executable name)
         crypto
         core
         consensus
+        network
         GTest::gtest_main
         project_warnings
     )
@@ -42,4 +43,7 @@ add_forgechain_test_executable(consensus_tests
 
 add_forgechain_test_executable(integration_tests
     integration/FullBlockchainLifecycleTest.cpp
+)
+add_forgechain_test_executable(network_tests
+    network/MessageTest.cpp
 )

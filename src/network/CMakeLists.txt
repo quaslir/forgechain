@@ -1,5 +1,6 @@
 add_library(network
 Socket.cpp
+Message.cpp
 )
 
 target_include_directories(network PUBLIC
