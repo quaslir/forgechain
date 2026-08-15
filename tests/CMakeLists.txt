@@ -15,6 +15,7 @@ add_executable(forgechain_tests
     crypto/SignatureTest.cpp
     core/BlockTest.cpp
     core/BlockchainTest.cpp
+    core/LedgerTest.cpp
      consensus/ProofOfWorkTest.cpp
      consensus/RetargetTest.cpp
 )
