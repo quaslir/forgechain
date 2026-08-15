@@ -4,6 +4,7 @@ target_link_libraries(forgechain PRIVATE
     core
     crypto
     consensus
+    network
     project_warnings
 )
 
