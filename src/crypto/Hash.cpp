@@ -1,5 +1,5 @@
-#include "crypto/OpenSSLTypes.hpp"
 #include "crypto/CommonTypes.hpp"
+#include "crypto/OpenSSLTypes.hpp"
 #include <cstdint>
 #include <openssl/evp.h>
 

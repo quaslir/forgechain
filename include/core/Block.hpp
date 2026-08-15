@@ -2,8 +2,8 @@
 #include <cstdint>
 #include <vector>
 
-#include "crypto/CommonTypes.hpp"
 #include "core/Transaction.hpp"
+#include "crypto/CommonTypes.hpp"
 namespace forgechain::core {
 
 using forgechain::crypto::HashBytes;
@@ -18,7 +18,8 @@ struct Block {
   std::vector<Transaction> transactions_;
   HashBytes hash_;
 
-  Block(uint32_t version, HashBytes prev_hash, uint64_t timestamp, std::vector<Transaction> transactions);
+  Block(uint32_t version, HashBytes prev_hash, uint64_t timestamp,
+        std::vector<Transaction> transactions);
 
   [[nodiscard]] HashBytes compute_hash() const;
   [[nodiscard]] std::vector<uint8_t> serialize() const;

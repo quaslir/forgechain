@@ -1,33 +1,45 @@
 include(FetchContent)
-
 FetchContent_Declare(
     googletest
     URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.zip
     DOWNLOAD_EXTRACT_TIMESTAMP true
 )
-
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-add_executable(forgechain_tests
+include(GoogleTest)
+
+
+function(add_forgechain_test_executable name)
+    add_executable(${name} ${ARGN})
+    target_link_libraries(${name} PRIVATE
+        crypto
+        core
+        consensus
+        GTest::gtest_main
+        project_warnings
+    )
+    gtest_discover_tests(${name})
+endfunction()
+
+add_forgechain_test_executable(crypto_tests
     crypto/HashTest.cpp
     crypto/KeysTest.cpp
     crypto/SignatureTest.cpp
+)
+
+add_forgechain_test_executable(core_tests
     core/BlockTest.cpp
     core/BlockchainTest.cpp
     core/LedgerTest.cpp
     core/MempoolTest.cpp
-     consensus/ProofOfWorkTest.cpp
-     consensus/RetargetTest.cpp
 )
 
-target_link_libraries(forgechain_tests PRIVATE
-crypto
-core
-consensus
-    GTest::gtest_main
-    project_warnings
+add_forgechain_test_executable(consensus_tests
+    consensus/ProofOfWorkTest.cpp
+    consensus/RetargetTest.cpp
 )
 
-include(GoogleTest)
-gtest_discover_tests(forgechain_tests)
+add_forgechain_test_executable(integration_tests
+    integration/FullBlockchainLifecycleTest.cpp
+)
