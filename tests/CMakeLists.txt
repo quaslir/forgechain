@@ -16,6 +16,7 @@ add_executable(forgechain_tests
     core/BlockTest.cpp
     core/BlockchainTest.cpp
     core/LedgerTest.cpp
+    core/MempoolTest.cpp
      consensus/ProofOfWorkTest.cpp
      consensus/RetargetTest.cpp
 )
