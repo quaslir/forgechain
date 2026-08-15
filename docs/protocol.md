@@ -2,8 +2,7 @@
 
 This document specifies the wire format used for communication between
 forgechain nodes. It is the reference for implementing the networking
-layer (Stage 5: `#20` TCP socket layer, `#21` handshake, `#22`
-propagation, `#23` initial block download).
+layer
 
 All multi-byte integers are encoded **little-endian** unless stated
 otherwise, matching the host byte order this project already assumes
