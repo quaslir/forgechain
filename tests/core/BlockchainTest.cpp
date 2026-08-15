@@ -1,11 +1,10 @@
 #include "core/Blockchain.hpp"
 #include "core/Block.hpp"
-#include "crypto/Hash.hpp"
 #include <gtest/gtest.h>
 #include <cstdint>
 #include <cstddef>
 #include <stdexcept>
-
+#include "crypto/CommonTypes.hpp"
 using namespace forgechain::core;
 using forgechain::crypto::HashBytes;
 
@@ -40,14 +39,14 @@ TEST(Blockchain, TwoFreshBlockchainsHaveIdenticalGenesisBlocks) {
 
 TEST(Blockchain, AddBlockIncreasesSize) {
     Blockchain chain;
-    Block next(1, chain.latest().hash_, 1700000001);
+    Block next(1, chain.latest().hash_, 1700000001, {});
     chain.add_block(next);
     EXPECT_EQ(chain.size(), 2u);
 }
 
 TEST(Blockchain, AddBlockAppendsAtTheEnd) {
     Blockchain chain;
-    Block next(1, chain.latest().hash_, 1700000001);
+    Block next(1, chain.latest().hash_, 1700000001, {});
     chain.add_block(next);
     EXPECT_EQ(chain.latest().hash_, next.hash_);
 }
@@ -55,18 +54,18 @@ TEST(Blockchain, AddBlockAppendsAtTheEnd) {
 TEST(Blockchain, AddBlockDoesNotModifyEarlierBlocks) {
     Blockchain chain;
     auto genesisHashBefore = chain.at(0).hash_;
-    Block next(1, chain.latest().hash_, 1700000001);
+    Block next(1, chain.latest().hash_, 1700000001, {});
     chain.add_block(next);
     EXPECT_EQ(chain.at(0).hash_, genesisHashBefore);
 }
 
 TEST(Blockchain, MultipleAddBlockCallsPreserveInsertionOrder) {
     Blockchain chain;
-    Block b1(1, chain.latest().hash_, 1700000001);
+    Block b1(1, chain.latest().hash_, 1700000001, {});
     chain.add_block(b1);
-    Block b2(1, chain.latest().hash_, 1700000002);
+    Block b2(1, chain.latest().hash_, 1700000002, {});
     chain.add_block(b2);
-    Block b3(1, chain.latest().hash_, 1700000003);
+    Block b3(1, chain.latest().hash_, 1700000003, {});
     chain.add_block(b3);
     EXPECT_EQ(chain.size(), 4u);
     EXPECT_EQ(chain.at(1).hash_, b1.hash_);
@@ -79,7 +78,7 @@ TEST(Blockchain, AddingManyBlocksScalesSizeCorrectly) {
     Blockchain chain;
     constexpr int kBlocksToAdd = 500;
     for (int i = 0; i < kBlocksToAdd; ++i) {
-        Block next(1, chain.latest().hash_, static_cast<uint64_t>(1700000000) + static_cast<uint64_t>(i));
+        Block next(1, chain.latest().hash_, static_cast<uint64_t>(1700000000) + static_cast<uint64_t>(i), {});
         chain.add_block(next);
     }
     EXPECT_EQ(chain.size(), static_cast<size_t>(kBlocksToAdd + 1));
@@ -88,9 +87,9 @@ TEST(Blockchain, AddingManyBlocksScalesSizeCorrectly) {
 
 TEST(Blockchain, LatestReturnsLastAddedBlock) {
     Blockchain chain;
-    Block a(1, chain.latest().hash_, 1700000001);
+    Block a(1, chain.latest().hash_, 1700000001, {});
     chain.add_block(a);
-    Block b(1, chain.latest().hash_, 1700000002);
+    Block b(1, chain.latest().hash_, 1700000002, {});
     chain.add_block(b);
     EXPECT_EQ(chain.latest().hash_, b.hash_);
 }
@@ -98,7 +97,7 @@ TEST(Blockchain, LatestReturnsLastAddedBlock) {
 TEST(Blockchain, AtReturnsCorrectBlockForEachHeight) {
     Blockchain chain;
     HashBytes genesisHash = chain.latest().hash_;
-    Block a(1, chain.latest().hash_, 1700000001);
+    Block a(1, chain.latest().hash_, 1700000001, {});
     chain.add_block(a);
     EXPECT_EQ(chain.at(0).hash_, genesisHash);
     EXPECT_EQ(chain.at(1).hash_, a.hash_);
@@ -108,7 +107,7 @@ TEST(Blockchain, SizeMatchesNumberOfBlocksAdded) {
     Blockchain chain;
     EXPECT_EQ(chain.size(), 1u);
     for (int i = 0; i < 10; ++i) {
-        Block next(1, chain.latest().hash_, static_cast<uint64_t>(1700000000) + static_cast<uint64_t>(i));
+        Block next(1, chain.latest().hash_, static_cast<uint64_t>(1700000000) + static_cast<uint64_t>(i), {});
         chain.add_block(next);
         EXPECT_EQ(chain.size(), static_cast<size_t>(i + 2));
     }
@@ -121,11 +120,11 @@ TEST(Blockchain, AtOutOfBoundsThrows) {
 
 TEST(Blockchain, EachBlockReferencesActualPreviousHash) {
     Blockchain chain;
-    Block a(1, chain.latest().hash_, 1700000001);
+    Block a(1, chain.latest().hash_, 1700000001, {});
     HashBytes genesisHash = chain.latest().hash_;
     chain.add_block(a);
     EXPECT_EQ(chain.at(1).prev_hash_, genesisHash);
-    Block b(1, chain.latest().hash_, 1700000002);
+    Block b(1, chain.latest().hash_, 1700000002, {});
     HashBytes aHash = chain.latest().hash_;
     chain.add_block(b);
     EXPECT_EQ(chain.at(2).prev_hash_, aHash);
@@ -133,7 +132,7 @@ TEST(Blockchain, EachBlockReferencesActualPreviousHash) {
 
 TEST(Blockchain, OperatorBracketReturnsSameBlockAsAt) {
     Blockchain chain;
-    Block a(1, chain.latest().hash_, 1700000001);
+    Block a(1, chain.latest().hash_, 1700000001, {});
     chain.add_block(a);
 
     EXPECT_EQ(chain[0].hash_, chain.at(0).hash_);
@@ -142,9 +141,9 @@ TEST(Blockchain, OperatorBracketReturnsSameBlockAsAt) {
 
 TEST(Blockchain, OperatorBracketReflectsInsertionOrder) {
     Blockchain chain;
-    Block a(1, chain.latest().hash_, 1700000001);
+    Block a(1, chain.latest().hash_, 1700000001, {});
     chain.add_block(a);
-    Block b(1, chain.latest().hash_, 1700000002);
+    Block b(1, chain.latest().hash_, 1700000002, {});
     chain.add_block(b);
 
     EXPECT_EQ(chain[0].hash_, chain.at(0).hash_);
@@ -160,7 +159,7 @@ TEST(Blockchain, EmptyIsFalseForFreshChain) {
 
 TEST(Blockchain, EmptyRemainsFalseAfterAddingBlocks) {
     Blockchain chain;
-    Block a(1, chain.latest().hash_, 1700000001);
+    Block a(1, chain.latest().hash_, 1700000001, {});
     chain.add_block(a);
     EXPECT_FALSE(chain.empty());
 }
@@ -173,7 +172,7 @@ TEST(BlockchainValidation, FreshChainIsValid) {
 TEST(BlockchainValidation, HonestlyBuiltChainIsValid) {
     Blockchain chain;
     for (int i = 0; i < 20; ++i) {
-        Block next(1, chain.latest().hash_, static_cast<uint64_t>(1700000000) + static_cast<uint64_t>(i));
+        Block next(1, chain.latest().hash_, static_cast<uint64_t>(1700000000) + static_cast<uint64_t>(i), {});
         chain.add_block(next);
     }
     EXPECT_TRUE(chain.is_valid());
@@ -185,7 +184,7 @@ TEST(BlockchainValidation, DetectsBrokenLinkage) {
     HashBytes wrongPrevHash{};
     wrongPrevHash[0] = 0xFF;
 
-    Block brokenLink(1, wrongPrevHash, 1700000001);
+    Block brokenLink(1, wrongPrevHash, 1700000001, {});
     chain.add_block(brokenLink);
 
     EXPECT_FALSE(chain.is_valid());
@@ -194,7 +193,7 @@ TEST(BlockchainValidation, DetectsBrokenLinkage) {
 TEST(BlockchainValidation, DetectsTamperedFieldWithStaleHash) {
     Blockchain chain;
 
-    Block tampered(1, chain.latest().hash_, 1700000001);
+    Block tampered(1, chain.latest().hash_, 1700000001, {});
     tampered.timestamp_ = 9999999999ULL;
 
     chain.add_block(tampered);
@@ -205,14 +204,14 @@ TEST(BlockchainValidation, DetectsTamperedFieldWithStaleHash) {
 TEST(BlockchainValidation, DetectsTamperingInAMiddleBlockNotJustTheTip) {
     Blockchain chain;
 
-    Block first(1, chain.latest().hash_, 1700000001);
+    Block first(1, chain.latest().hash_, 1700000001, {});
     chain.add_block(first);
 
-    Block corruptedMiddle(1, chain.latest().hash_, 1700000002);
+    Block corruptedMiddle(1, chain.latest().hash_, 1700000002, {});
     corruptedMiddle.difficulty_ = 42;
     chain.add_block(corruptedMiddle);
 
-    Block last(1, chain.latest().hash_, 1700000003);
+    Block last(1, chain.latest().hash_, 1700000003, {});
     chain.add_block(last);
 
     EXPECT_FALSE(chain.is_valid());
@@ -220,7 +219,7 @@ TEST(BlockchainValidation, DetectsTamperingInAMiddleBlockNotJustTheTip) {
 
 TEST(BlockchainValidation, DetectsTamperedNonceField) {
     Blockchain chain;
-    Block tampered(1, chain.latest().hash_, 1700000001);
+    Block tampered(1, chain.latest().hash_, 1700000001, {});
     tampered.nonce_ = 12345;
     chain.add_block(tampered);
 
@@ -229,7 +228,7 @@ TEST(BlockchainValidation, DetectsTamperedNonceField) {
 
 TEST(BlockchainValidation, DetectsTamperedVersionField) {
     Blockchain chain;
-    Block tampered(1, chain.latest().hash_, 1700000001);
+    Block tampered(1, chain.latest().hash_, 1700000001, {});
     tampered.version_ = 999;
     chain.add_block(tampered);
 
@@ -240,7 +239,7 @@ TEST(BlockchainValidation, ValidAfterManyBlocksWithNoTampering) {
     Blockchain chain;
     constexpr int kBlocksToAdd = 200;
     for (int i = 0; i < kBlocksToAdd; ++i) {
-        Block next(1, chain.latest().hash_, static_cast<uint64_t>(1700000000) + static_cast<uint64_t>(i));
+        Block next(1, chain.latest().hash_, static_cast<uint64_t>(1700000000) + static_cast<uint64_t>(i), {});
         chain.add_block(next);
     }
     EXPECT_TRUE(chain.is_valid());
@@ -249,8 +248,8 @@ TEST(BlockchainValidation, ValidAfterManyBlocksWithNoTampering) {
 TEST(BlockchainValidation, DetectsReorderedBlocks) {
     Blockchain chain;
 
-    Block first(1, chain.latest().hash_, 1700000001);
-    Block second(1, first.hash_, 1700000002);
+    Block first(1, chain.latest().hash_, 1700000001, {});
+    Block second(1, first.hash_, 1700000002, {});
 
     chain.add_block(second);
     chain.add_block(first);
@@ -261,12 +260,12 @@ TEST(BlockchainValidation, DetectsReorderedBlocks) {
 TEST(BlockchainValidation, InvalidStaysInvalidEvenWithMoreHonestBlocksAfter) {
     Blockchain chain;
 
-    Block tampered(1, chain.latest().hash_, 1700000001);
+    Block tampered(1, chain.latest().hash_, 1700000001, {});
     tampered.version_ = 999;
     chain.add_block(tampered);
 
     for (int i = 0; i < 10; ++i) {
-        Block next(1, chain.latest().hash_, static_cast<uint64_t>(1700000010) + static_cast<uint64_t>(i));
+        Block next(1, chain.latest().hash_, static_cast<uint64_t>(1700000010) + static_cast<uint64_t>(i), {});
         chain.add_block(next);
     }
 

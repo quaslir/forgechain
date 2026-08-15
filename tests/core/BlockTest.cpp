@@ -6,7 +6,7 @@
 #include <string>
 #include <cstdint>
 #include <cstddef>
-
+#include "crypto/CommonTypes.hpp"
 using namespace forgechain::core;
 using forgechain::crypto::HashBytes;
 
@@ -27,7 +27,7 @@ HashBytes fakeHash(uint8_t seed) {
 
 TEST(Block, ConstructorStoresGivenFields) {
     HashBytes prevHash = fakeHash(0xAB);
-    Block block(1, prevHash, 1700000000);
+    Block block(1, prevHash, 1700000000, {});
 
     EXPECT_EQ(block.version_, 1u);
     EXPECT_EQ(block.prev_hash_, prevHash);
@@ -35,86 +35,86 @@ TEST(Block, ConstructorStoresGivenFields) {
 }
 
 TEST(Block, ConstructorDefaultsNonceToZero) {
-    Block block(1, zeroHash(), 1700000000);
+    Block block(1, zeroHash(), 1700000000, {});
     EXPECT_EQ(block.nonce_, 0u);
 }
 
 TEST(Block, ConstructorComputesNonEmptyHash) {
-    Block block(1, zeroHash(), 1700000000);
+    Block block(1, zeroHash(), 1700000000, {});
     EXPECT_NE(block.hash_, zeroHash());
 }
 
 
 TEST(Block, SerializeIsDeterministic) {
     HashBytes prevHash = fakeHash(0x11);
-    Block a(1, prevHash, 1700000000);
-    Block b(1, prevHash, 1700000000);
+    Block a(1, prevHash, 1700000000, {});
+    Block b(1, prevHash, 1700000000, {});
 
     EXPECT_EQ(a.serialize(), b.serialize());
 }
 
 TEST(Block, SerializeIsNonEmpty) {
-    Block block(1, zeroHash(), 1700000000);
+    Block block(1, zeroHash(), 1700000000, {});
     EXPECT_FALSE(block.serialize().empty());
 }
 
 TEST(Block, SerializeChangesWhenVersionChanges) {
-    Block a(1, zeroHash(), 1700000000);
-    Block b(2, zeroHash(), 1700000000);
+    Block a(1, zeroHash(), 1700000000, {});
+    Block b(2, zeroHash(), 1700000000, {});
     EXPECT_NE(a.serialize(), b.serialize());
 }
 
 TEST(Block, SerializeChangesWhenPrevHashChanges) {
-    Block a(1, fakeHash(0x01), 1700000000);
-    Block b(1, fakeHash(0x02), 1700000000);
+    Block a(1, fakeHash(0x01), 1700000000, {});
+    Block b(1, fakeHash(0x02), 1700000000, {});
     EXPECT_NE(a.serialize(), b.serialize());
 }
 
 TEST(Block, SerializeChangesWhenTimestampChanges) {
-    Block a(1, zeroHash(), 1700000000);
-    Block b(1, zeroHash(), 1700000001);
+    Block a(1, zeroHash(), 1700000000, {});
+    Block b(1, zeroHash(), 1700000001, {});
     EXPECT_NE(a.serialize(), b.serialize());
 }
 
 
 TEST(Block, IdenticalFieldsProduceIdenticalHash) {
     HashBytes prevHash = fakeHash(0x42);
-    Block a(1, prevHash, 1700000000);
-    Block b(1, prevHash, 1700000000);
+    Block a(1, prevHash, 1700000000, {});
+    Block b(1, prevHash, 1700000000, {});
 
     EXPECT_EQ(a.hash_, b.hash_);
 }
 
 TEST(Block, HashIsDeterministicAcrossManyConstructions) {
     HashBytes prevHash = fakeHash(0x99);
-    Block first(1, prevHash, 1700000000);
+    Block first(1, prevHash, 1700000000, {});
 
     for (int i = 0; i < 1000; ++i) {
-        Block again(1, prevHash, 1700000000);
+        Block again(1, prevHash, 1700000000, {});
         EXPECT_EQ(again.hash_, first.hash_) << "mismatch at iteration " << i;
     }
 }
 
 TEST(Block, DifferentVersionProducesDifferentHash) {
-    Block a(1, zeroHash(), 1700000000);
-    Block b(2, zeroHash(), 1700000000);
+    Block a(1, zeroHash(), 1700000000, {});
+    Block b(2, zeroHash(), 1700000000, {});
     EXPECT_NE(a.hash_, b.hash_);
 }
 
 TEST(Block, DifferentPrevHashProducesDifferentHash) {
-    Block a(1, fakeHash(0x01), 1700000000);
-    Block b(1, fakeHash(0x02), 1700000000);
+    Block a(1, fakeHash(0x01), 1700000000, {});
+    Block b(1, fakeHash(0x02), 1700000000, {});
     EXPECT_NE(a.hash_, b.hash_);
 }
 
 TEST(Block, DifferentTimestampProducesDifferentHash) {
-    Block a(1, zeroHash(), 1700000000);
-    Block b(1, zeroHash(), 1700000001);
+    Block a(1, zeroHash(), 1700000000, {});
+    Block b(1, zeroHash(), 1700000001, {});
     EXPECT_NE(a.hash_, b.hash_);
 }
 
 TEST(Block, HashMatchesRecomputationFromSerialize) {
-    Block block(1, fakeHash(0x77), 1700000000);
+    Block block(1, fakeHash(0x77), 1700000000, {});
 
     auto recomputed = forgechain::crypto::double_sha_256(block.serialize());
     EXPECT_EQ(block.hash_, recomputed);
@@ -131,7 +131,7 @@ TEST(Block, ManyDistinctBlocksProduceUniqueHashes) {
 
         Block block(static_cast<uint32_t>(i),
                     prevHash,
-                    static_cast<uint64_t>(1700000000) + static_cast<uint64_t>(i));
+                    static_cast<uint64_t>(1700000000) + static_cast<uint64_t>(i), {});
 
         seenHashes.insert(forgechain::crypto::to_hex(block.hash_));
     }
@@ -142,27 +142,27 @@ TEST(Block, ManyDistinctBlocksProduceUniqueHashes) {
 
 TEST(Block, HandlesZeroTimestamp) {
     EXPECT_NO_THROW({
-        Block block(1, zeroHash(), 0);
+        Block block(1, zeroHash(), 0, {});
         EXPECT_NE(block.hash_, zeroHash());
     });
 }
 
 TEST(Block, HandlesMaxVersionValue) {
     EXPECT_NO_THROW({
-        Block block(UINT32_MAX, zeroHash(), 1700000000);
+        Block block(UINT32_MAX, zeroHash(), 1700000000, {});
         EXPECT_NE(block.hash_, zeroHash());
     });
 }
 
 TEST(Block, HandlesMaxTimestampValue) {
     EXPECT_NO_THROW({
-        Block block(1, zeroHash(), UINT64_MAX);
+        Block block(1, zeroHash(), UINT64_MAX, {});
         EXPECT_NE(block.hash_, zeroHash());
     });
 }
 
 TEST(Block, AllZeroFieldsStillProduceValidHash) {
-    Block block(0, zeroHash(), 0);
+    Block block(0, zeroHash(), 0, {});
     EXPECT_NE(block.hash_, zeroHash());
     EXPECT_EQ(block.hash_.size(), 32u);
 }

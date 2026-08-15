@@ -1,19 +1,18 @@
 #pragma once
-#include <cstdint>
 #include "crypto/CommonTypes.hpp"
+#include <cstdint>
 namespace forgechain::core {
-    using forgechain::crypto::str;
-    using forgechain::crypto::bytes;
+using forgechain::crypto::bytes;
+using forgechain::crypto::str;
 
+struct Transaction {
+  str sender_;
+  str recipient_;
+  uint64_t amount_;
+  bytes signature_;
 
-    struct Transaction {
-        str sender_;
-        str recipient_;
-        uint64_t amount_;
-        bytes signature_;
-
-        Transaction(str sender, str recipient, uint64_t amount);
-        [[nodiscard]] bytes serialize() const;
-        bool operator==(const Transaction& tx);
-    };
-}
+  Transaction(str sender, str recipient, uint64_t amount);
+  [[nodiscard]] bytes serialize() const;
+  bool operator==(const Transaction &tx);
+};
+} // namespace forgechain::core
