@@ -14,5 +14,6 @@ namespace forgechain::core {
 
         Transaction(str sender, str recipient, uint64_t amount);
         [[nodiscard]] bytes serialize() const;
+        bool operator==(const Transaction& tx);
     };
 }

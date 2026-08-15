@@ -15,4 +15,8 @@ namespace forgechain::core {
 
          return out;
     }
+
+    bool Transaction::operator==(const Transaction& tx) {
+        return sender_ == tx.sender_ && recipient_ == tx.recipient_ && amount_ == tx.amount_ && signature_ == tx.signature_;
+    }
 }

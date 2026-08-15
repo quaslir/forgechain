@@ -3,6 +3,7 @@ add_library(core
    Blockchain.cpp
    Transaction.cpp
    Ledger.cpp
+   Mempool.cpp
 )
 
 target_include_directories(core PUBLIC ${CMAKE_SOURCE_DIR}/src)
