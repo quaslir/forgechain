@@ -7,7 +7,7 @@ namespace forgechain::core {
 using forgechain::core::Block;
 using forgechain::crypto::HashBytes;
 Blockchain::Blockchain() {
-  Block genesis{1, HashBytes{}, 0};
+  Block genesis{1, HashBytes{}, 0, {}};
   blocks_.push_back(genesis);
 }
 

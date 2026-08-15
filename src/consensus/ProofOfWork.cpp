@@ -1,11 +1,14 @@
 #include "consensus/ProofOfWork.hpp"
-#include "core/Block.hpp"
-#include "crypto/Hash.hpp"
+#include <vector>
+#include "core/Transaction.hpp"
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
+#include "crypto/CommonTypes.hpp"
+#include "core/Block.hpp"
+#include <utility>
 namespace forgechain::consensus {
 using forgechain::crypto::HashBytes;
 bool meets_target(const HashBytes &hash, uint32_t difficulty) {
@@ -32,10 +35,11 @@ bool meets_target(const HashBytes &hash, uint32_t difficulty) {
 }
 
 Block mine_block(uint32_t version, HashBytes prev_hash, uint64_t timestamp,
-                 uint32_t difficulty) {
+                 uint32_t difficulty, std::vector<core::Transaction> transactions
+) {
   uint32_t nonce = 0;
   constexpr uint32_t kMaxNonce = std::numeric_limits<uint32_t>::max();
-  Block block(version, prev_hash, timestamp);
+  Block block{version, prev_hash, timestamp, std::move(transactions)};
   block.difficulty_ = difficulty;
   while (nonce < kMaxNonce) {
     block.nonce_ = nonce;
