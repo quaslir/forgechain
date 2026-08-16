@@ -17,9 +17,9 @@ the network isn't perfect (latency, partitions, malicious peers).
 
 ## What's implemented
 
-- [ ] Block structure & hash-linked chain validation
-- [ ] ECDSA transaction signing & verification
-- [ ] Proof-of-Work mining with difficulty retargeting
+- [x] Block structure & hash-linked chain validation
+- [x] ECDSA transaction signing & verification
+- [x] Proof-of-Work mining with difficulty retargeting
 - [ ] P2P networking (handshake, block/tx propagation, gossip)
 - [ ] Multi-node synchronization & fork resolution (heaviest chain rule)
 - [ ] Mempool for pending transactions
