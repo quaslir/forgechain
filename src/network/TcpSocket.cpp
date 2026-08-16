@@ -9,8 +9,8 @@ namespace forgechain::network {
     TcpSocket::TcpSocket(int fd) : fd_(fd) {}
     void TcpSocket::close_socket() {
         if(is_valid()) {
-        close(fd_);
-        fd_ = -1;
+        close(fd_.load());
+        fd_.store(-1);
         }
     }
     TcpSocket::~TcpSocket() {
@@ -18,28 +18,33 @@ namespace forgechain::network {
     }
 
     TcpSocket::TcpSocket(TcpSocket && other) noexcept {
-        fd_ = other.fd_;
-        other.fd_ = -1;
+        fd_.store(other.fd());
+        other.fd_.store(-1);
     }
     TcpSocket& TcpSocket::operator=(TcpSocket&& other) noexcept {
         if(this != &other) {
             if(is_valid()) {
-                close(fd_);
+                close(fd_.load());
             }
-            fd_ = other.fd_;
-            other.fd_ = -1;
+            fd_.store(other.fd());
+            other.fd_.store(-1);
 
         }
                     return *this;
     }
 
   int TcpSocket::fd() const {
-      return fd_;
+      return fd_.load();
   }
   bool TcpSocket::is_valid() const {
-      return fd_ >= 0;
+      return fd_.load() >= 0;
   }
-
+  void TcpSocket::set_receive_timeout(int seconds) {
+      timeval tv{};
+      tv.tv_sec = seconds;
+      tv.tv_usec = 0;
+      setsockopt(fd_.load(), SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  }
   TcpSocket listen_on(uint16_t port) {
       int fd = socket(AF_INET, SOCK_STREAM, 0);
       if(fd < 0) {
@@ -89,4 +94,6 @@ namespace forgechain::network {
 
       return TcpSocket{fd};
   }
+
+
 }

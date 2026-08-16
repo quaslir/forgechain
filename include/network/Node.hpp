@@ -4,6 +4,7 @@
 #include "network/Handshake.hpp"
 #include "network/Peer.hpp"
 #include "network/TcpSocket.hpp"
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <thread>
@@ -11,9 +12,14 @@
 #include <memory>
 #include <mutex>
 #include <atomic>
+#include <utility>
 namespace forgechain::network {
-    using VectorPeers = std::vector<std::unique_ptr<Peer>>;
-
+    struct PeerEntry {
+            std::unique_ptr<Peer> peer;
+            std::thread worker;
+    };
+    using VectorPeers = std::vector<PeerEntry>;
+    constexpr std::chrono::milliseconds CLEANER_TIMEOUT = std::chrono::milliseconds(500);
     class Node {
         public:
             Node(uint16_t listen_port, VersionInfo info);
@@ -22,8 +28,10 @@ namespace forgechain::network {
             void stop();
             bool accept_one_peer();
             void accept_loop();
-            bool connect_to_peer(const crypto::str& host, uint16_t port);
             void peer_loop(Peer* peer);
+            void cleaner_loop();
+            bool connect_to_peer(const crypto::str& host, uint16_t port);
+
             [[nodiscard]] size_t peer_count() const;
         private:
 
@@ -33,6 +41,7 @@ namespace forgechain::network {
             VectorPeers peers_;
             std::atomic<bool> running_{false};
             std::thread accept_thread_;
+            std::thread cleaner_thread_;
             mutable std::mutex peers_mutex_;
     };
 }

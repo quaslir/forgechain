@@ -2,6 +2,7 @@
 
 #include "crypto/CommonTypes.hpp"
 #include <cstdint>
+#include <atomic>
 namespace forgechain::network {
     class TcpSocket {
         public:
@@ -16,8 +17,9 @@ namespace forgechain::network {
           [[nodiscard]]  int fd() const;
           [[nodiscard]] bool is_valid() const;
           void close_socket();
+          void set_receive_timeout(int seconds);
         private:
-            int fd_;
+            std::atomic<int> fd_;
     };
 
     TcpSocket listen_on(uint16_t port);
