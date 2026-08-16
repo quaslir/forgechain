@@ -2,6 +2,7 @@ add_library(network
 Socket.cpp
 Message.cpp
 TcpSocket.cpp
+Handshake.cpp
 )
 
 target_include_directories(network PUBLIC
