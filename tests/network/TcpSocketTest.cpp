@@ -9,6 +9,7 @@
 #include <thread>
 #include <cstdint>
 #include <utility>
+#include <sys/socket.h>
 using namespace forgechain::network;
 
 namespace {
@@ -148,9 +149,25 @@ TEST(TcpSocket, ListenConnectAcceptEstablishesAWorkingConnection) {
     std::thread client_thread([&]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         client_side = connect_to("127.0.0.1", port);
+        ssize_t written = write(client_side.fd(), "ping", 4);
+        EXPECT_EQ(written, 4);
+
+        char reply[5] = {0};
+        ssize_t got = read(client_side.fd(), reply, 4);
+        EXPECT_EQ(got, 4);
+        EXPECT_STREQ(reply, "pong");
     });
 
     TcpSocket server_side = accept_connection(server);
+
+    char request[5] = {0};
+    ssize_t got_request = read(server_side.fd(), request, 4);
+    EXPECT_EQ(got_request, 4);
+    EXPECT_STREQ(request, "ping");
+
+    ssize_t written_reply = write(server_side.fd(), "pong", 4);
+    EXPECT_EQ(written_reply, 4);
+
     client_thread.join();
 
     EXPECT_TRUE(server_side.is_valid());
