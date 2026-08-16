@@ -13,10 +13,10 @@ using namespace forgechain::network;
 
 namespace {
 
-uint16_t next_test_port() {
-    static uint16_t port = 30000;
-    return port++;
-}
+    uint16_t next_test_port() {
+        static auto port = static_cast<uint16_t>(30000 + (getpid() % 1000) * 20);
+        return port++;
+    }
 
 bool fd_is_open(int fd) {
     return fcntl(fd, F_GETFD) != -1;
