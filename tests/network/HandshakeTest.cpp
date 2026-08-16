@@ -27,8 +27,8 @@ uint16_t next_test_port() {
 TEST(VersionSerialization, RoundTripPreservesAllFields) {
     VersionInfo original{7, 12345, 1700000000ULL};
 
-    auto bytes = serialize_version(original);
-    VersionInfo restored = deserialize_version(bytes);
+    auto serialized = serialize_version(original);
+    VersionInfo restored = deserialize_version(serialized);
 
     EXPECT_EQ(restored.protocol_version, original.protocol_version);
     EXPECT_EQ(restored.chain_height, original.chain_height);
@@ -37,15 +37,15 @@ TEST(VersionSerialization, RoundTripPreservesAllFields) {
 
 TEST(VersionSerialization, ProducesExactlyTwentyBytes) {
     VersionInfo info{1, 0, 0};
-    auto bytes = serialize_version(info);
-    EXPECT_EQ(bytes.size(), 20u);
+    auto serialized = serialize_version(info);
+    EXPECT_EQ(serialized.size(), 20u);
 }
 
 TEST(VersionSerialization, RoundTripPreservesMaximumValues) {
     VersionInfo edge{0xFFFFFFFF, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL};
 
-    auto bytes = serialize_version(edge);
-    VersionInfo restored = deserialize_version(bytes);
+    auto serialized = serialize_version(edge);
+    VersionInfo restored = deserialize_version(serialized);
 
     EXPECT_EQ(restored.protocol_version, edge.protocol_version);
     EXPECT_EQ(restored.chain_height, edge.chain_height);
@@ -55,8 +55,8 @@ TEST(VersionSerialization, RoundTripPreservesMaximumValues) {
 TEST(VersionSerialization, RoundTripPreservesZeroValues) {
     VersionInfo zero{0, 0, 0};
 
-    auto bytes = serialize_version(zero);
-    VersionInfo restored = deserialize_version(bytes);
+    auto serialized = serialize_version(zero);
+    VersionInfo restored = deserialize_version(serialized);
 
     EXPECT_EQ(restored.protocol_version, 0u);
     EXPECT_EQ(restored.chain_height, 0u);
@@ -65,18 +65,18 @@ TEST(VersionSerialization, RoundTripPreservesZeroValues) {
 
 TEST(VersionSerialization, FieldsAreInDocumentedOrder) {
     VersionInfo info{1, 42, 1700000000ULL};
-    auto bytes = serialize_version(info);
+    auto serialized = serialize_version(info);
 
     uint32_t first_field;
-    std::memcpy(&first_field, bytes.data(), sizeof(first_field));
+    std::memcpy(&first_field, serialized.data(), sizeof(first_field));
     EXPECT_EQ(first_field, 1u) << "first 4 bytes must be protocol_version";
 
     uint64_t second_field;
-    std::memcpy(&second_field, bytes.data() + 4, sizeof(second_field));
+    std::memcpy(&second_field, serialized.data() + 4, sizeof(second_field));
     EXPECT_EQ(second_field, 42u) << "next 8 bytes must be chain_height";
 
     uint64_t third_field;
-    std::memcpy(&third_field, bytes.data() + 12, sizeof(third_field));
+    std::memcpy(&third_field, serialized.data() + 12, sizeof(third_field));
     EXPECT_EQ(third_field, 1700000000ULL) << "last 8 bytes must be timestamp";
 }
 

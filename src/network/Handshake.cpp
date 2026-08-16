@@ -8,6 +8,7 @@ namespace forgechain::network {
 
     crypto::bytes serialize_version(const VersionInfo& info) {
         crypto::bytes out;
+        out.reserve(kExpectedVersionPayloadSize);
         out.insert(out.end(), reinterpret_cast<const uint8_t*>(&info.protocol_version),
             reinterpret_cast<const uint8_t*>(&info.protocol_version) + sizeof(info.protocol_version));
 
@@ -33,8 +34,7 @@ namespace forgechain::network {
         Message incoming_msg;
         if(!receive_message(fd, incoming_msg)) return std::nullopt;
         if(incoming_msg.type != MessageType::VERSION) return std::nullopt;
-        constexpr size_t kExpectedVersionPayloadSize =
-                sizeof(uint32_t) + sizeof(uint64_t) + sizeof(uint64_t);
+
 
         if(incoming_msg.payload.size() != kExpectedVersionPayloadSize) return std::nullopt;
         return deserialize_version(incoming_msg.payload);
