@@ -1,5 +1,3 @@
-#pragma once
-
 #include "crypto/CommonTypes.hpp"
 #include "network/Message.hpp"
 #include "network/Handshake.hpp"
