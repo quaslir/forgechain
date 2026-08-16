@@ -6,24 +6,33 @@
 #include "network/TcpSocket.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <thread>
 #include <vector>
+#include <memory>
+#include <mutex>
+#include <atomic>
 namespace forgechain::network {
+    using VectorPeers = std::vector<std::unique_ptr<Peer>>;
+
     class Node {
         public:
             Node(uint16_t listen_port, VersionInfo info);
-
+            ~Node();
             bool start();
-
+            void stop();
             bool accept_one_peer();
-
+            void accept_loop();
             bool connect_to_peer(const crypto::str& host, uint16_t port);
-
+            void peer_loop(Peer* peer);
             [[nodiscard]] size_t peer_count() const;
         private:
 
             uint16_t listen_port_;
             VersionInfo info_;
             TcpSocket listener_{-1};
-            std::vector<Peer> peers_;
+            VectorPeers peers_;
+            std::atomic<bool> running_{false};
+            std::thread accept_thread_;
+            mutable std::mutex peers_mutex_;
     };
 }

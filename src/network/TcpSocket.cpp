@@ -7,11 +7,14 @@
 #include <arpa/inet.h>
 namespace forgechain::network {
     TcpSocket::TcpSocket(int fd) : fd_(fd) {}
-
-    TcpSocket::~TcpSocket() {
+    void TcpSocket::close_socket() {
         if(is_valid()) {
         close(fd_);
+        fd_ = -1;
         }
+    }
+    TcpSocket::~TcpSocket() {
+        close_socket();
     }
 
     TcpSocket::TcpSocket(TcpSocket && other) noexcept {

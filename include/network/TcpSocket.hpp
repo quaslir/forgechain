@@ -15,7 +15,7 @@ namespace forgechain::network {
 
           [[nodiscard]]  int fd() const;
           [[nodiscard]] bool is_valid() const;
-
+          void close_socket();
         private:
             int fd_;
     };
