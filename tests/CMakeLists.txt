@@ -46,4 +46,5 @@ add_forgechain_test_executable(integration_tests
 )
 add_forgechain_test_executable(network_tests
     network/MessageTest.cpp
+    network/TcpSocketTest.cpp
 )

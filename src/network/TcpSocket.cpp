@@ -42,6 +42,8 @@ namespace forgechain::network {
       if(fd < 0) {
           return TcpSocket{-1};
       }
+      int opt = 1;
+      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
       sockaddr_in address{};
       address.sin_family = AF_INET;
       address.sin_addr.s_addr = INADDR_ANY;
