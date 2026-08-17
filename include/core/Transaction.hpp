@@ -6,7 +6,11 @@ namespace forgechain::core {
 using forgechain::crypto::bytes;
 using forgechain::crypto::str;
 
+
+
 struct Transaction {
+
+
   str sender_;
   str recipient_;
   uint64_t amount_;
@@ -18,4 +22,5 @@ struct Transaction {
   [[nodiscard]] crypto::HashBytes compute_hash() const;
   bool operator==(const Transaction &tx);
 };
+
 } // namespace forgechain::core

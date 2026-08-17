@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <vector>
-
+#include <optional>
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
 namespace forgechain::core {
@@ -23,5 +23,7 @@ struct Block {
 
   [[nodiscard]] HashBytes compute_hash() const;
   [[nodiscard]] std::vector<uint8_t> serialize() const;
+
+  static std::optional<Block> deserialize(const crypto::bytes& payload);
 };
 } // namespace forgechain::core
