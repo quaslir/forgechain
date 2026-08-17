@@ -54,4 +54,5 @@ crypto::bytes Block::serialize() const {
 
   return out;
 }
+
 } // namespace forgechain::core

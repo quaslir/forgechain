@@ -1,5 +1,6 @@
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
+#include "crypto/Hash.hpp"
 #include <cstdint>
 #include <utility>
 namespace forgechain::core {
@@ -17,9 +18,12 @@ crypto::bytes Transaction::serialize() const {
 
   return out;
 }
-
+crypto::HashBytes Transaction::compute_hash() const {
+  return crypto::double_sha_256(serialize());
+}
 bool Transaction::operator==(const Transaction &tx) {
   return sender_ == tx.sender_ && recipient_ == tx.recipient_ &&
          amount_ == tx.amount_ && signature_ == tx.signature_;
 }
+
 } // namespace forgechain::core

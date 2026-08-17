@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "core/Block.hpp"
+#include "crypto/CommonTypes.hpp"
 namespace forgechain::core {
 using forgechain::core::Block;
 class Blockchain {
@@ -14,7 +15,7 @@ public:
 
   [[nodiscard]] const Block &latest() const;
   [[nodiscard]] const Block &at(size_t height) const;
-
+  [[nodiscard]] bool has_block(const crypto::HashBytes &hash) const;
   [[nodiscard]] size_t size() const;
 
   [[nodiscard]] bool is_valid() const;

@@ -28,4 +28,11 @@ Mempool::get_transactions_for_block(size_t limit) const {
 }
 size_t Mempool::size() const { return pending_.size(); }
 bool Mempool::empty() const { return pending_.empty(); }
+bool Mempool::has_transaction(const crypto::HashBytes &hash) const {
+  auto it = std::find_if(
+      pending_.begin(), pending_.end(),
+      [&hash](const Transaction &tx) { return tx.compute_hash() == hash; });
+
+  return it != pending_.end();
+}
 } // namespace forgechain::core

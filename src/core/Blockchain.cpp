@@ -2,6 +2,7 @@
 #include "core/Block.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "crypto/Hash.hpp"
+#include <algorithm>
 #include <cstddef>
 namespace forgechain::core {
 using forgechain::core::Block;
@@ -12,7 +13,13 @@ Blockchain::Blockchain() {
 }
 
 void Blockchain::add_block(const Block &block) { blocks_.push_back(block); }
+bool Blockchain::has_block(const crypto::HashBytes &hash) const {
+  auto it =
+      std::find_if(blocks_.begin(), blocks_.end(),
+                   [&hash](const Block &block) { return block.hash_ == hash; });
 
+  return it != blocks_.end();
+}
 const Block &Blockchain::at(size_t height) const { return blocks_.at(height); }
 
 const Block &Blockchain::latest() const { return blocks_.back(); }

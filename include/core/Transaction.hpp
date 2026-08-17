@@ -13,6 +13,7 @@ struct Transaction {
 
   Transaction(str sender, str recipient, uint64_t amount);
   [[nodiscard]] bytes serialize() const;
+  [[nodiscard]] crypto::HashBytes compute_hash() const;
   bool operator==(const Transaction &tx);
 };
 } // namespace forgechain::core

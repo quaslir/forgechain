@@ -20,7 +20,8 @@ bool read_exact(int fd, uint8_t *buffer, size_t length) {
 bool send_exact(int fd, const uint8_t *buffer, size_t length) {
   size_t total_sent = 0;
   while (total_sent < length) {
-    ssize_t n = send(fd, buffer + total_sent, length - total_sent, MSG_NOSIGNAL);
+    ssize_t n =
+        send(fd, buffer + total_sent, length - total_sent, MSG_NOSIGNAL);
     if (n <= 0) {
       return false;
     }

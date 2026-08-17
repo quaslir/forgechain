@@ -3,28 +3,23 @@
 #include "network/TcpSocket.hpp"
 #include <utility>
 namespace forgechain::network {
-    Peer::Peer(TcpSocket socket, VersionInfo remote_version) : socket_(std::move(socket)), remote_version_(remote_version) {}
+Peer::Peer(TcpSocket socket, VersionInfo remote_version)
+    : socket_(std::move(socket)), remote_version_(remote_version) {}
 
-    Peer::Peer(Peer && other) noexcept  : socket_(std::move(other.socket_)), remote_version_(other.remote_version_), alive_(other.alive_.load()) {}
-    Peer& Peer::operator=(Peer&& other) noexcept {
-        if(this != &other) {
-            socket_ = std::move(other.socket_);
-            remote_version_ = other.remote_version_;
-            alive_.store(other.alive_.load());
-        }
-        return *this;
-    }
-   const VersionInfo& Peer::remote_version() const {
-       return remote_version_;
-   }
-   TcpSocket& Peer::socket() {
-return socket_;
-   }
-
-   [[nodiscard]] bool Peer::is_alive() const {
-       return alive_.load();
-   }
-   void Peer::mark_dead() {
-       alive_.store(false);
-   }
+Peer::Peer(Peer &&other) noexcept
+    : socket_(std::move(other.socket_)), remote_version_(other.remote_version_),
+      alive_(other.alive_.load()) {}
+Peer &Peer::operator=(Peer &&other) noexcept {
+  if (this != &other) {
+    socket_ = std::move(other.socket_);
+    remote_version_ = other.remote_version_;
+    alive_.store(other.alive_.load());
+  }
+  return *this;
 }
+const VersionInfo &Peer::remote_version() const { return remote_version_; }
+TcpSocket &Peer::socket() { return socket_; }
+
+[[nodiscard]] bool Peer::is_alive() const { return alive_.load(); }
+void Peer::mark_dead() { alive_.store(false); }
+} // namespace forgechain::network
