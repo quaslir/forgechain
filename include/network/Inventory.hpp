@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 #include <cstddef>
+#include <optional>
 namespace forgechain::network {
     enum class InventoryItemType : uint8_t {
         BLOCK = 0,
@@ -13,6 +14,8 @@ namespace forgechain::network {
     struct InventoryItem {
         InventoryItemType type;
         crypto::HashBytes hash;
+
+        bool operator==(const InventoryItem&) const = default;
     };
 
     constexpr size_t kInventoryItemSize = sizeof(uint8_t) + sizeof(crypto::HashBytes);
