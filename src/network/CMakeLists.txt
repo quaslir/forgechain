@@ -4,6 +4,7 @@ Message.cpp
 TcpSocket.cpp
 Handshake.cpp
 Peer.cpp
+Node.cpp
 )
 
 target_include_directories(network PUBLIC
