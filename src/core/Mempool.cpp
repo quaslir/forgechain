@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <vector>
+#include <optional>
 namespace forgechain::core {
 bool Mempool::add_transaction(const Transaction &tx,
                               const crypto::bytes &sender_public_key) {
@@ -35,4 +36,15 @@ bool Mempool::has_transaction(const crypto::HashBytes &hash) const {
 
   return it != pending_.end();
 }
+
+[[nodiscard]] std::optional<Transaction> Mempool::find(const crypto::HashBytes& hash) const {
+for(const auto& tx : pending_) {
+    if(tx.compute_hash() == hash) {
+        return tx;
+    }
+}
+
+return std::nullopt;
+}
+
 } // namespace forgechain::core

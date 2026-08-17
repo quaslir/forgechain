@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <sys/socket.h>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -111,6 +112,11 @@ bool Node::connect_to_peer(const crypto::str &host, uint16_t port) {
   std::lock_guard<std::mutex> lock(peers_mutex_);
   return peers_.size();
 }
+bool Node::send_msg(Peer * peer, MessageType type, const crypto::bytes& payload) {
+    Message msg{.type = type, .payload = payload};
+    return send_message(peer->socket().fd(), msg);
+}
+
 void Node::handle_inv(Peer * peer, const crypto::bytes& payload) {
     auto items = deserialize_inventory(payload);
     if(!items.has_value()) return;
@@ -133,10 +139,34 @@ void Node::handle_inv(Peer * peer, const crypto::bytes& payload) {
 
     if(!missing.empty()) {
         crypto::bytes getdata_payload = serialize_inventory(missing);
-        Message getdata_msg{.type = MessageType::GETDATA, .payload = getdata_payload};
-        send_message(peer->socket().fd(), getdata_msg);
+        send_msg(peer, MessageType::GETDATA, getdata_payload);
     }
 }
+
+void Node::handle_getdata(Peer * peer, const crypto::bytes&payload) {
+
+    auto items = deserialize_inventory(payload);
+    if(!items.has_value()) return;
+
+    for(const auto& item : *items) {
+        if(item.type == InventoryItemType::BLOCK) {
+            auto block_container = blockchain_.find(item.hash);
+            if(block_container.has_value()) {
+                send_msg(peer, MessageType::BLOCK, block_container->serialize());
+            }
+        }
+
+        else if(item.type == InventoryItemType::TRANSACTION) {
+            auto tx_container = mempool_.find(item.hash);
+            if(tx_container.has_value()) {
+                send_msg(peer, MessageType::TX, tx_container->serialize() );
+            }
+        }
+    }
+}
+
+
+
 void Node::stop() {
   running_.store(false);
   listener_.close_socket();

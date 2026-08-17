@@ -4,6 +4,7 @@
 #include "core/Mempool.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "network/Handshake.hpp"
+#include "network/Message.hpp"
 #include "network/Peer.hpp"
 #include "network/TcpSocket.hpp"
 #include <atomic>
@@ -39,9 +40,10 @@ public:
   [[nodiscard]] size_t peer_count() const;
 
 private:
+    bool send_msg(Peer * peer, MessageType type, const crypto::bytes& payload);
   bool register_new_peer(TcpSocket &&socket);
   void handle_inv(Peer * peer, const crypto::bytes& payload);
-
+  void handle_getdata(Peer * peer, const crypto::bytes&payload);
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};
