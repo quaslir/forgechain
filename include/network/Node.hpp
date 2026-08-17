@@ -34,7 +34,7 @@ namespace forgechain::network {
 
             [[nodiscard]] size_t peer_count() const;
         private:
-
+            bool register_new_peer(TcpSocket && socket);
             uint16_t listen_port_;
             VersionInfo info_;
             TcpSocket listener_{-1};

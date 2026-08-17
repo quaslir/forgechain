@@ -59,38 +59,31 @@ void Node::cleaner_loop() {
 
 }
 
+    bool Node::register_new_peer(TcpSocket && socket) {
+               if(!socket.is_valid()) return false;
+        socket.set_receive_timeout(5);
+        auto incoming_info = perform_handshake(socket.fd(), info_);
+        if(!incoming_info.has_value()) return false;
+        auto peer = std::make_unique<Peer>(std::move(socket), *incoming_info);
+        Peer * raw_peer = peer.get();
+        std::thread worker{&Node::peer_loop, this, raw_peer};
+    {
+        std::lock_guard<std::mutex> lock(peers_mutex_);
+        peers_.push_back(PeerEntry{.peer = std::move(peer),.worker =  std::move(worker)});
+    }
+
+        return true;
+    }
+
     bool Node::accept_one_peer() {
        TcpSocket socket  =  accept_connection(listener_);
-       if(!socket.is_valid()) return false;
-       socket.set_receive_timeout(5);
-       auto incoming_info = perform_handshake(socket.fd(), info_);
-       if(!incoming_info.has_value()) return false;
-       auto peer =std::make_unique<Peer>(std::move(socket), *incoming_info);
-       Peer * raw_peer = peer.get();
-       std::thread worker{&Node::peer_loop, this, raw_peer};
-   {
-       std::lock_guard<std::mutex> lock(peers_mutex_);
-       peers_.push_back(PeerEntry{.peer = std::move(peer),.worker =  std::move(worker)});
-   }
-
-       return true;
+       return register_new_peer(std::move(socket));
     }
 
     bool Node::connect_to_peer(const crypto::str& host, uint16_t port) {
        TcpSocket socket = connect_to(host, port);
-       if(!socket.is_valid()) return false;
-       socket.set_receive_timeout(5);
-       auto incoming_info = perform_handshake(socket.fd(), info_);
-       if(!incoming_info.has_value()) return false;
-       auto peer =std::make_unique<Peer>(std::move(socket), *incoming_info);
-       Peer * raw_peer = peer.get();
-           std::thread worker{&Node::peer_loop, this, raw_peer};
-       {
-           std::lock_guard<std::mutex> lock(peers_mutex_);
-           peers_.push_back(PeerEntry{.peer = std::move(peer),.worker =  std::move(worker)});
-       }
 
-       return true;
+       return register_new_peer(std::move(socket));
     }
 
     [[nodiscard]] size_t Node::peer_count() const {
