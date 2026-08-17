@@ -5,6 +5,7 @@ TcpSocket.cpp
 Handshake.cpp
 Peer.cpp
 Node.cpp
+Inventory.cpp
 )
 
 target_include_directories(network PUBLIC
