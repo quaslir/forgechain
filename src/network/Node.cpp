@@ -50,7 +50,7 @@ void Node::peer_loop(Peer *peer) {
             handle_inv(peer, msg.payload);
             break;
         case MessageType::GETDATA :
-            //handle get data
+            handle_getdata(peer, msg.payload);
             break;
         case MessageType::BLOCK :
         case MessageType::TX :
