@@ -15,6 +15,8 @@ bool Mempool::add_transaction(const Transaction &tx,
   if (!crypto::verify(tx.serialize_for_signing(), tx.signature_,
                       sender_public_key))
     return false;
+  if (has_transaction(tx.compute_hash()))
+    return false;
   pending_.push_back(tx);
   return true;
 }

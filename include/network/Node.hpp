@@ -25,6 +25,8 @@ struct PeerEntry {
 using VectorPeers = std::vector<PeerEntry>;
 constexpr std::chrono::milliseconds CLEANER_TIMEOUT =
     std::chrono::milliseconds(500);
+constexpr auto PING_INTERVAL = std::chrono::seconds(1);
+constexpr auto PING_TIMEOUT = std::chrono::seconds(45);
 class Node {
 public:
   Node(uint16_t listen_port, VersionInfo info, core::Blockchain &blockchain,
@@ -34,13 +36,14 @@ public:
   void stop();
   bool accept_one_peer();
   void accept_loop();
-  void peer_loop(Peer *peer);
-  void cleaner_loop();
   bool connect_to_peer(const crypto::str &host, uint16_t port);
 
   [[nodiscard]] size_t peer_count() const;
 
 private:
+  void peer_loop(Peer *peer);
+  void cleaner_loop();
+  void ping_loop();
   bool send_msg(Peer *peer, MessageType type, const crypto::bytes &payload);
   [[nodiscard]] bool
   is_valid_new_block_unlocked(const core::Block &block) const;
@@ -51,7 +54,10 @@ private:
   void handle_getdata(Peer *peer, const crypto::bytes &payload);
   void handle_block(Peer *peer, const crypto::bytes &payload);
   void handle_tx(Peer *peer, const crypto::bytes &payload);
-  void handle_getblocks(Peer * peer, const crypto::bytes& payload);
+  void handle_getblocks(Peer *peer, const crypto::bytes &payload);
+  void handle_ping(Peer *peer);
+  void handle_pong();
+
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};
@@ -61,6 +67,7 @@ private:
   std::atomic<bool> running_{false};
   std::thread accept_thread_;
   std::thread cleaner_thread_;
+  std::thread ping_thread_;
   mutable std::mutex peers_mutex_;
   mutable std::mutex chain_mutex_;
 };

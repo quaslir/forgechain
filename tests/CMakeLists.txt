@@ -50,4 +50,5 @@ add_forgechain_test_executable(network_tests
     network/HandshakeTest.cpp
     network/InventoryTest.cpp
     network/PropagationTest.cpp
+    network/NodeTest.cpp
 )
