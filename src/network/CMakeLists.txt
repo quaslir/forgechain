@@ -6,6 +6,7 @@ Handshake.cpp
 Peer.cpp
 Node.cpp
 Inventory.cpp
+GetBlocks.cpp
 )
 
 target_include_directories(network PUBLIC
