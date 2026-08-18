@@ -5,14 +5,15 @@
 #include "crypto/Signature.hpp"
 #include <algorithm>
 #include <cstddef>
-#include <vector>
 #include <optional>
+#include <vector>
 namespace forgechain::core {
 bool Mempool::add_transaction(const Transaction &tx,
                               const crypto::bytes &sender_public_key) {
   if (crypto::derive_address(sender_public_key) != tx.sender_)
     return false;
-  if (!crypto::verify(tx.serialize(), tx.signature_, sender_public_key))
+  if (!crypto::verify(tx.serialize_for_signing(), tx.signature_,
+                      sender_public_key))
     return false;
   pending_.push_back(tx);
   return true;
@@ -37,14 +38,15 @@ bool Mempool::has_transaction(const crypto::HashBytes &hash) const {
   return it != pending_.end();
 }
 
-[[nodiscard]] std::optional<Transaction> Mempool::find(const crypto::HashBytes& hash) const {
-for(const auto& tx : pending_) {
-    if(tx.compute_hash() == hash) {
-        return tx;
+[[nodiscard]] std::optional<Transaction>
+Mempool::find(const crypto::HashBytes &hash) const {
+  for (const auto &tx : pending_) {
+    if (tx.compute_hash() == hash) {
+      return tx;
     }
-}
+  }
 
-return std::nullopt;
+  return std::nullopt;
 }
 
 } // namespace forgechain::core

@@ -1,9 +1,11 @@
 #pragma once
 
+#include "core/Block.hpp"
 #include "core/Blockchain.hpp"
 #include "core/Mempool.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "network/Handshake.hpp"
+#include "network/Inventory.hpp"
 #include "network/Message.hpp"
 #include "network/Peer.hpp"
 #include "network/TcpSocket.hpp"
@@ -14,7 +16,6 @@
 #include <memory>
 #include <mutex>
 #include <thread>
-#include <utility>
 #include <vector>
 namespace forgechain::network {
 struct PeerEntry {
@@ -40,10 +41,17 @@ public:
   [[nodiscard]] size_t peer_count() const;
 
 private:
-    bool send_msg(Peer * peer, MessageType type, const crypto::bytes& payload);
+  bool send_msg(Peer *peer, MessageType type, const crypto::bytes &payload);
+  [[nodiscard]] bool
+  is_valid_new_block_unlocked(const core::Block &block) const;
   bool register_new_peer(TcpSocket &&socket);
-  void handle_inv(Peer * peer, const crypto::bytes& payload);
-  void handle_getdata(Peer * peer, const crypto::bytes&payload);
+  void broadcast_inv(Peer *exclude, InventoryItemType type,
+                     const crypto::HashBytes &hash);
+  void handle_inv(Peer *peer, const crypto::bytes &payload);
+  void handle_getdata(Peer *peer, const crypto::bytes &payload);
+  void handle_block(Peer *peer, const crypto::bytes &payload);
+  void handle_tx(Peer *peer, const crypto::bytes &payload);
+  void handle_getblocks(Peer * peer, const crypto::bytes& payload);
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};
@@ -54,5 +62,6 @@ private:
   std::thread accept_thread_;
   std::thread cleaner_thread_;
   mutable std::mutex peers_mutex_;
+  mutable std::mutex chain_mutex_;
 };
 } // namespace forgechain::network

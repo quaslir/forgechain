@@ -21,15 +21,14 @@ bool Blockchain::has_block(const crypto::HashBytes &hash) const {
   return it != blocks_.end();
 }
 
-std::optional<Block>Blockchain:: find(const crypto::HashBytes &hash) const {
-    for(const auto & block : blocks_) {
-        if(block.hash_ == hash) {
-            return block;
-        }
+std::optional<Block> Blockchain::find(const crypto::HashBytes &hash) const {
+  for (const auto &block : blocks_) {
+    if (block.hash_ == hash) {
+      return block;
     }
-    return std::nullopt;
+  }
+  return std::nullopt;
 }
-
 
 const Block &Blockchain::at(size_t height) const { return blocks_.at(height); }
 

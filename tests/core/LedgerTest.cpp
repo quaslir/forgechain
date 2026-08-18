@@ -46,7 +46,7 @@ TEST(Ledger, ApplyTransactionMovesFundsCorrectly) {
     ledger.set_balance("alice", 1000);
     ledger.set_balance("bob", 0);
 
-    Transaction tx("alice", "bob", 300);
+    Transaction tx("alice", "bob", 300, {});
     EXPECT_TRUE(ledger.apply_transaction(tx));
 
     EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(700));
@@ -57,7 +57,7 @@ TEST(Ledger, ApplyTransactionToBrandNewRecipientWorks) {
     Ledger ledger;
     ledger.set_balance("alice", 1000);
 
-    Transaction tx("alice", "bob", 300);
+    Transaction tx("alice", "bob", 300, {});
     EXPECT_TRUE(ledger.apply_transaction(tx));
 
     EXPECT_EQ(ledger.get_balance("bob"), std::optional<uint64_t>(300));
@@ -67,7 +67,7 @@ TEST(Ledger, ApplyTransactionForExactBalanceLeavesSenderAtZero) {
     Ledger ledger;
     ledger.set_balance("alice", 500);
 
-    Transaction tx("alice", "bob", 500);
+    Transaction tx("alice", "bob", 500, {});
     EXPECT_TRUE(ledger.apply_transaction(tx));
 
     EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(0));
@@ -79,7 +79,7 @@ TEST(Ledger, ApplyTransactionOfZeroAmountSucceedsAndChangesNothing) {
     ledger.set_balance("alice", 1000);
     ledger.set_balance("bob", 200);
 
-    Transaction tx("alice", "bob", 0);
+    Transaction tx("alice", "bob", 0, {});
     EXPECT_TRUE(ledger.apply_transaction(tx));
 
     EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(1000));
@@ -90,7 +90,7 @@ TEST(Ledger, ApplyTransactionFailsWhenSenderUnknown) {
     Ledger ledger;
     ledger.set_balance("bob", 100);
 
-    Transaction tx("alice", "bob", 50);
+    Transaction tx("alice", "bob", 50, {});
     EXPECT_FALSE(ledger.apply_transaction(tx));
 
     EXPECT_EQ(ledger.get_balance("alice"), std::nullopt);
@@ -102,7 +102,7 @@ TEST(Ledger, ApplyTransactionFailsWhenBalanceInsufficient) {
     ledger.set_balance("alice", 100);
     ledger.set_balance("bob", 0);
 
-    Transaction tx("alice", "bob", 101);
+    Transaction tx("alice", "bob", 101, {});
     EXPECT_FALSE(ledger.apply_transaction(tx));
 
     EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(100));
@@ -113,7 +113,7 @@ TEST(Ledger, ApplyTransactionFailsWhenSenderHasExactlyOneLessThanNeeded) {
     Ledger ledger;
     ledger.set_balance("alice", 499);
 
-    Transaction tx("alice", "bob", 500);
+    Transaction tx("alice", "bob", 500, {});
     EXPECT_FALSE(ledger.apply_transaction(tx));
     EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(499));
 }
@@ -122,7 +122,7 @@ TEST(Ledger, FailedTransactionDoesNotCreateRecipientEntry) {
     Ledger ledger;
     ledger.set_balance("alice", 10);
 
-    Transaction tx("alice", "bob", 999);
+    Transaction tx("alice", "bob", 999, {});
     EXPECT_FALSE(ledger.apply_transaction(tx));
 
     EXPECT_EQ(ledger.get_balance("bob"), std::nullopt);
@@ -132,7 +132,7 @@ TEST(Ledger, SelfTransferLeavesBalanceUnchanged) {
     Ledger ledger;
     ledger.set_balance("alice", 1000);
 
-    Transaction tx("alice", "alice", 300);
+    Transaction tx("alice", "alice", 300, {});
     EXPECT_TRUE(ledger.apply_transaction(tx));
 
     EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(1000));
@@ -142,7 +142,7 @@ TEST(Ledger, SelfTransferOfEntireBalanceSucceeds) {
     Ledger ledger;
     ledger.set_balance("alice", 500);
 
-    Transaction tx("alice", "alice", 500);
+    Transaction tx("alice", "alice", 500, {});
     EXPECT_TRUE(ledger.apply_transaction(tx));
 
     EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(500));
@@ -154,9 +154,9 @@ TEST(Ledger, SequentialTransactionsAccumulateCorrectly) {
     ledger.set_balance("bob", 0);
     ledger.set_balance("charlie", 0);
 
-    EXPECT_TRUE(ledger.apply_transaction(Transaction("alice", "bob", 300)));
-    EXPECT_TRUE(ledger.apply_transaction(Transaction("bob", "charlie", 100)));
-    EXPECT_TRUE(ledger.apply_transaction(Transaction("alice", "charlie", 200)));
+    EXPECT_TRUE(ledger.apply_transaction(Transaction("alice", "bob", 300, {})));
+    EXPECT_TRUE(ledger.apply_transaction(Transaction("bob", "charlie", 100, {})));
+    EXPECT_TRUE(ledger.apply_transaction(Transaction("alice", "charlie", 200, {})));
 
     EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(500));
     EXPECT_EQ(ledger.get_balance("bob"), std::optional<uint64_t>(200));
@@ -168,9 +168,9 @@ TEST(Ledger, RejectedTransactionInSequenceDoesNotDisruptLaterOnes) {
     ledger.set_balance("alice", 100);
     ledger.set_balance("bob", 0);
 
-    EXPECT_TRUE(ledger.apply_transaction(Transaction("alice", "bob", 50)));
-    EXPECT_FALSE(ledger.apply_transaction(Transaction("alice", "bob", 999)));
-    EXPECT_TRUE(ledger.apply_transaction(Transaction("alice", "bob", 50)));
+    EXPECT_TRUE(ledger.apply_transaction(Transaction("alice", "bob", 50, {})));
+    EXPECT_FALSE(ledger.apply_transaction(Transaction("alice", "bob", 999, {})));
+    EXPECT_TRUE(ledger.apply_transaction(Transaction("alice", "bob", 50, {})));
 
     EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(0));
     EXPECT_EQ(ledger.get_balance("bob"), std::optional<uint64_t>(100));
@@ -187,7 +187,7 @@ TEST(Ledger, ManySequentialTransfersLeaveConsistentTotalSupply) {
     for (int i = 0; i < 100; ++i) {
         const char* from = (i % 3 == 0) ? "alice" : (i % 3 == 1) ? "bob" : "charlie";
         const char* to = (i % 3 == 0) ? "bob" : (i % 3 == 1) ? "charlie" : "alice";
-        ledger.apply_transaction(Transaction(from, to, 10));
+        ledger.apply_transaction(Transaction(from, to, 10, {}));
     }
 
     uint64_t total = ledger.get_balance("alice").value_or(0) +

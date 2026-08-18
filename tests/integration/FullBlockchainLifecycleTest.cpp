@@ -31,8 +31,8 @@ Wallet make_wallet() {
 }
 
 Transaction make_signed_tx(const Wallet& sender, const str& recipient, uint64_t amount) {
-    Transaction tx(sender.address, recipient, amount);
-    tx.signature_ = sign(tx.serialize(), sender.keys.private_key);
+    Transaction tx(sender.address, recipient, amount, sender.keys.public_key);
+    tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
     return tx;
 }
 
@@ -204,7 +204,7 @@ TEST(FullBlockchainLifecycle, TamperedMinedTransactionFailsBlockIntegrityCheck) 
 
     EXPECT_NE(tamperedCopy.compute_hash(), tamperedCopy.hash_);
 
-    EXPECT_FALSE(verify(tamperedCopy.transactions_[0].serialize(),
+    EXPECT_FALSE(verify(tamperedCopy.transactions_[0].serialize_for_signing(),
                          tamperedCopy.transactions_[0].signature_,
                          alice.keys.public_key));
 }
@@ -235,8 +235,8 @@ TEST(FullBlockchainLifecycle, ForgedTransactionNeverReachesAMinedBlock) {
 
     Mempool mempool;
 
-    Transaction forged(alice.address, mallory.address, 500);
-    forged.signature_ = sign(forged.serialize(), mallory.keys.private_key);
+    Transaction forged(alice.address, mallory.address, 500, mallory.keys.public_key);
+    forged.signature_ = sign(forged.serialize_for_signing(), mallory.keys.private_key);
 
     EXPECT_FALSE(mempool.add_transaction(forged, mallory.keys.public_key));
     EXPECT_TRUE(mempool.empty());

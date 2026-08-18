@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cstddef>
-#include <vector>
-#include <optional>
 #include "core/Block.hpp"
 #include "crypto/CommonTypes.hpp"
+#include <cstddef>
+#include <optional>
+#include <vector>
 namespace forgechain::core {
 using forgechain::core::Block;
 class Blockchain {
