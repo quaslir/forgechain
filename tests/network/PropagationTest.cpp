@@ -1,0 +1,194 @@
+#include "network/Node.hpp"
+#include "network/Handshake.hpp"
+#include "network/Message.hpp"
+#include "network/TcpSocket.hpp"
+#include "core/Blockchain.hpp"
+#include "core/Mempool.hpp"
+#include "core/Block.hpp"
+#include "core/Transaction.hpp"
+#include "consensus/ProofOfWork.hpp"
+#include "crypto/CommonTypes.hpp"
+#include "crypto/Keys.hpp"
+#include "crypto/Address.hpp"
+#include "crypto/Signature.hpp"
+
+#include <gtest/gtest.h>
+
+#include <unistd.h>
+
+#include <chrono>
+#include <cstdint>
+#include <memory>
+#include <thread>
+#include <vector>
+
+using namespace forgechain::network;
+using namespace forgechain::core;
+using namespace forgechain::consensus;
+using namespace forgechain::crypto;
+
+namespace {
+
+uint16_t next_test_port() {
+    static auto port = static_cast<uint16_t>(34000 + (getpid() % 1000) * 20);
+    return port++;
+}
+
+VersionInfo make_version(uint64_t height = 0) {
+    return VersionInfo{.protocol_version = 1, .chain_height = height, .timestamp = 0};
+}
+
+template <typename Predicate>
+bool WaitUntil(Predicate predicate, std::chrono::milliseconds timeout) {
+    auto start = std::chrono::steady_clock::now();
+    while (!predicate()) {
+        if (std::chrono::steady_clock::now() - start > timeout) {
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return true;
+}
+
+struct Wallet {
+    KeyPair keys;
+    str address;
+};
+
+Wallet make_wallet() {
+    KeyPair kp = generate_keypair();
+    return Wallet{kp, derive_address(kp.public_key)};
+}
+
+Transaction make_signed_tx(const Wallet& sender, const str& recipient, uint64_t amount) {
+    Transaction tx(sender.address, recipient, amount, sender.keys.public_key);
+    tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
+    return tx;
+}
+
+class RawPeer {
+public:
+    bool connect(uint16_t port, const VersionInfo& info) {
+        socket_ = std::make_unique<TcpSocket>(connect_to("127.0.0.1", port));
+        if (!socket_->is_valid()) return false;
+        auto remote = perform_handshake(socket_->fd(), info);
+        return remote.has_value();
+    }
+
+    bool send(MessageType type, const bytes& payload) {
+        Message msg{.type = type, .payload = payload};
+        return send_message(socket_->fd(), msg);
+    }
+
+private:
+    std::unique_ptr<TcpSocket> socket_;
+};
+
+}  // namespace
+
+TEST(Propagation, ValidBlockFromOnePeerReachesSecondPeer) {
+    uint16_t port_a = next_test_port();
+    uint16_t port_b = next_test_port();
+
+    Blockchain chain_a;
+    Mempool mempool_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a);
+    ASSERT_TRUE(node_a.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    Blockchain chain_b;
+    Mempool mempool_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b);
+    ASSERT_TRUE(node_b.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    ASSERT_TRUE(node_b.connect_to_peer("127.0.0.1", port_a));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
+
+    RawPeer source;
+    ASSERT_TRUE(source.connect(port_a, make_version()));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
+
+    constexpr uint32_t kTestDifficulty = 8;
+    Block mined = mine_block(1, chain_a.latest().hash_, 1700000000, kTestDifficulty, {});
+    ASSERT_TRUE(source.send(MessageType::BLOCK, mined.serialize()));
+
+    ASSERT_TRUE(WaitUntil([&] { return chain_a.has_block(mined.hash_); }, std::chrono::seconds(2)))
+        << "Node A never accepted the block into its own chain";
+
+    ASSERT_TRUE(WaitUntil([&] { return chain_b.has_block(mined.hash_); }, std::chrono::seconds(2)))
+        << "Node B never received the block relayed by Node A";
+}
+
+TEST(Propagation, ValidTransactionFromOnePeerReachesSecondPeer) {
+    uint16_t port_a = next_test_port();
+    uint16_t port_b = next_test_port();
+
+    Blockchain chain_a;
+    Mempool mempool_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a);
+    ASSERT_TRUE(node_a.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    Blockchain chain_b;
+    Mempool mempool_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b);
+    ASSERT_TRUE(node_b.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    ASSERT_TRUE(node_b.connect_to_peer("127.0.0.1", port_a));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
+
+    RawPeer source;
+    ASSERT_TRUE(source.connect(port_a, make_version()));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
+
+    Wallet alice = make_wallet();
+    Transaction tx = make_signed_tx(alice, "bob-address", 100);
+    auto tx_hash = tx.compute_hash();
+
+    ASSERT_TRUE(source.send(MessageType::TX, tx.serialize()));
+
+    ASSERT_TRUE(WaitUntil([&] { return mempool_a.has_transaction(tx_hash); }, std::chrono::seconds(2)))
+        << "Node A never accepted the transaction into its own mempool";
+
+    ASSERT_TRUE(WaitUntil([&] { return mempool_b.has_transaction(tx_hash); }, std::chrono::seconds(2)))
+        << "Node B never received the transaction relayed by Node A";
+}
+
+TEST(Propagation, ForgedTransactionIsNeitherStoredNorRelayed) {
+    uint16_t port_a = next_test_port();
+    uint16_t port_b = next_test_port();
+
+    Blockchain chain_a;
+    Mempool mempool_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a);
+    ASSERT_TRUE(node_a.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    Blockchain chain_b;
+    Mempool mempool_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b);
+    ASSERT_TRUE(node_b.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    ASSERT_TRUE(node_b.connect_to_peer("127.0.0.1", port_a));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
+
+    RawPeer source;
+    ASSERT_TRUE(source.connect(port_a, make_version()));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
+
+    Wallet alice = make_wallet();
+    Wallet mallory = make_wallet();
+
+    Transaction forged(alice.address, "bob-address", 500, mallory.keys.public_key);
+    forged.signature_ = sign(forged.serialize_for_signing(), mallory.keys.private_key);
+    auto forged_hash = forged.compute_hash();
+
+    ASSERT_TRUE(source.send(MessageType::TX, forged.serialize()));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    EXPECT_FALSE(mempool_a.has_transaction(forged_hash));
+    EXPECT_FALSE(mempool_b.has_transaction(forged_hash));
+}

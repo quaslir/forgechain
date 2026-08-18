@@ -1,4 +1,5 @@
 #include "network/Node.hpp"
+#include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
 #include "core/Mempool.hpp"
@@ -9,7 +10,6 @@
 #include "network/Message.hpp"
 #include "network/Peer.hpp"
 #include "network/TcpSocket.hpp"
-#include "consensus/ProofOfWork.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -48,21 +48,21 @@ void Node::peer_loop(Peer *peer) {
       break;
     }
 
-    switch(msg.type) {
-        case MessageType::INV :
-            handle_inv(peer, msg.payload);
-            break;
-        case MessageType::GETDATA :
-            handle_getdata(peer, msg.payload);
-            break;
-        case MessageType::BLOCK :
-            handle_block(msg.payload);
-            break;
-        case MessageType::TX :
-            handle_tx(msg.payload);
-            break;
-        default:
-            break;
+    switch (msg.type) {
+    case MessageType::INV:
+      handle_inv(peer, msg.payload);
+      break;
+    case MessageType::GETDATA:
+      handle_getdata(peer, msg.payload);
+      break;
+    case MessageType::BLOCK:
+      handle_block(peer, msg.payload);
+      break;
+    case MessageType::TX:
+      handle_tx(peer, msg.payload);
+      break;
+    default:
+      break;
     }
   }
 }
@@ -118,87 +118,114 @@ bool Node::connect_to_peer(const crypto::str &host, uint16_t port) {
   std::lock_guard<std::mutex> lock(peers_mutex_);
   return peers_.size();
 }
-bool Node::send_msg(Peer * peer, MessageType type, const crypto::bytes& payload) {
-    Message msg{.type = type, .payload = payload};
-    return send_message(peer->socket().fd(), msg);
+bool Node::send_msg(Peer *peer, MessageType type,
+                    const crypto::bytes &payload) {
+  Message msg{.type = type, .payload = payload};
+  return send_message(peer->socket().fd(), msg);
 }
 
-bool Node::is_valid_new_block_unlocked(const core::Block& block) const {
+bool Node::is_valid_new_block_unlocked(const core::Block &block) const {
 
-        if(block.prev_hash_ != blockchain_.latest().hash_) {
-            return false;
-    }
+  if (block.prev_hash_ != blockchain_.latest().hash_) {
+    return false;
+  }
 
-    if(block.hash_ != block.compute_hash()) {
-        return false;
-    }
+  if (block.hash_ != block.compute_hash()) {
+    return false;
+  }
 
-    if(!consensus::meets_target(block.hash_, block.difficulty_)) {
-        return false;
-    }
+  if (!consensus::meets_target(block.hash_, block.difficulty_)) {
+    return false;
+  }
 
-    return true;
+  return true;
 }
 
-void Node::handle_inv(Peer * peer, const crypto::bytes& payload) {
-    auto items = deserialize_inventory(payload);
-    if(!items.has_value()) return;
+void Node::broadcast_inv(Peer *exclude, InventoryItemType type,
+                         const crypto::HashBytes &hash) {
+  InventoryItem item{.type = type, .hash = hash};
+  std::vector<InventoryItem> items{item};
+  crypto::bytes payload = serialize_inventory(items);
+  std::lock_guard<std::mutex> lock(peers_mutex_);
 
-    std::vector<InventoryItem> missing;
-
-    for(const auto& item : *items) {
-        bool have_it = false;
-        if(item.type == InventoryItemType::BLOCK) {
-            have_it = blockchain_.has_block(item.hash);
-        }
-        else if(item.type == InventoryItemType::TRANSACTION) {
-            have_it = mempool_.has_transaction(item.hash);
-        }
-
-        if(!have_it) {
-            missing.push_back(item);
-        }
-    }
-
-    if(!missing.empty()) {
-        crypto::bytes getdata_payload = serialize_inventory(missing);
-        send_msg(peer, MessageType::GETDATA, getdata_payload);
-    }
+  for (const auto &peer_entry : peers_) {
+    if (peer_entry.peer.get() == exclude || !peer_entry.peer->is_alive())
+      continue;
+    send_msg(peer_entry.peer.get(), MessageType::INV, payload);
+  }
 }
 
-void Node::handle_getdata(Peer * peer, const crypto::bytes&payload) {
+void Node::handle_inv(Peer *peer, const crypto::bytes &payload) {
+  auto items = deserialize_inventory(payload);
+  if (!items.has_value())
+    return;
 
-    auto items = deserialize_inventory(payload);
-    if(!items.has_value()) return;
+  std::vector<InventoryItem> missing;
 
-    for(const auto& item : *items) {
-        if(item.type == InventoryItemType::BLOCK) {
-            auto block_container = blockchain_.find(item.hash);
-            if(block_container.has_value()) {
-                send_msg(peer, MessageType::BLOCK, block_container->serialize());
-            }
-        }
-
-        else if(item.type == InventoryItemType::TRANSACTION) {
-            auto tx_container = mempool_.find(item.hash);
-            if(tx_container.has_value()) {
-                send_msg(peer, MessageType::TX, tx_container->serialize() );
-            }
-        }
+  for (const auto &item : *items) {
+    bool have_it = false;
+    if (item.type == InventoryItemType::BLOCK) {
+      have_it = blockchain_.has_block(item.hash);
+    } else if (item.type == InventoryItemType::TRANSACTION) {
+      have_it = mempool_.has_transaction(item.hash);
     }
+
+    if (!have_it) {
+      missing.push_back(item);
+    }
+  }
+
+  if (!missing.empty()) {
+    crypto::bytes getdata_payload = serialize_inventory(missing);
+    send_msg(peer, MessageType::GETDATA, getdata_payload);
+  }
 }
-void Node::handle_block(const crypto::bytes& payload) {
-    auto block_container = core::Block::deserialize(payload);
-    if(!block_container.has_value()) return;
+
+void Node::handle_getdata(Peer *peer, const crypto::bytes &payload) {
+
+  auto items = deserialize_inventory(payload);
+  if (!items.has_value())
+    return;
+
+  for (const auto &item : *items) {
+    if (item.type == InventoryItemType::BLOCK) {
+      auto block_container = blockchain_.find(item.hash);
+      if (block_container.has_value()) {
+        send_msg(peer, MessageType::BLOCK, block_container->serialize());
+      }
+    }
+
+    else if (item.type == InventoryItemType::TRANSACTION) {
+      auto tx_container = mempool_.find(item.hash);
+      if (tx_container.has_value()) {
+        send_msg(peer, MessageType::TX, tx_container->serialize());
+      }
+    }
+  }
+}
+void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
+  auto block_container = core::Block::deserialize(payload);
+  if (!block_container.has_value())
+    return;
+  {
     std::lock_guard<std::mutex> lock(chain_mutex_);
-    if(!is_valid_new_block_unlocked(*block_container)) return;
+    if (!is_valid_new_block_unlocked(*block_container))
+      return;
     blockchain_.add_block(*block_container);
+  }
+
+  broadcast_inv(peer, InventoryItemType::BLOCK, block_container->hash_);
 }
 
-void Node::handle_tx(const crypto::bytes& payload) {
-    auto tx_container = core::Transaction::deserialize(payload);
-    if(!tx_container.has_value()) return;
-    mempool_.add_transaction(*tx_container, tx_container->sender_public_key_);
+void Node::handle_tx(Peer *peer, const crypto::bytes &payload) {
+  auto tx_container = core::Transaction::deserialize(payload);
+  if (!tx_container.has_value())
+    return;
+  if (!mempool_.add_transaction(*tx_container,
+                                tx_container->sender_public_key_))
+    return;
+  broadcast_inv(peer, InventoryItemType::TRANSACTION,
+                tx_container->compute_hash());
 }
 
 void Node::stop() {
