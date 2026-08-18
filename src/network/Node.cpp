@@ -5,6 +5,7 @@
 #include "core/Mempool.hpp"
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
+#include "network/GetBlocks.hpp"
 #include "network/Handshake.hpp"
 #include "network/Inventory.hpp"
 #include "network/Message.hpp"
@@ -61,6 +62,9 @@ void Node::peer_loop(Peer *peer) {
     case MessageType::TX:
       handle_tx(peer, msg.payload);
       break;
+    case MessageType::GETBLOCKS :
+        handle_getblocks(peer, msg.payload);
+        break;
     default:
       break;
     }
@@ -88,14 +92,27 @@ bool Node::register_new_peer(TcpSocket &&socket) {
   if (!socket.is_valid())
     return false;
   socket.set_receive_timeout(5);
-  auto incoming_info = perform_handshake(socket.fd(), info_);
+  std::unique_lock<std::mutex> chain_lock(chain_mutex_);
+  auto my_height = static_cast<uint64_t>(blockchain_.size());
+  chain_lock.unlock();
+  VersionInfo current_info = info_;
+  current_info.chain_height = my_height;
+
+  auto incoming_info = perform_handshake(socket.fd(), current_info);
   if (!incoming_info.has_value())
     return false;
   auto peer = std::make_unique<Peer>(std::move(socket), *incoming_info);
   Peer *raw_peer = peer.get();
+
+  // sync between two peers
+  if(my_height < incoming_info->chain_height) {
+      if(!send_msg(raw_peer, MessageType::GETBLOCKS, serialize_getblocks(my_height))) return false;
+  }
+
+
   std::thread worker{&Node::peer_loop, this, raw_peer};
   {
-    std::lock_guard<std::mutex> lock(peers_mutex_);
+    std::lock_guard<std::mutex> peers_lock(peers_mutex_);
     peers_.push_back(
         PeerEntry{.peer = std::move(peer), .worker = std::move(worker)});
   }
@@ -226,6 +243,17 @@ void Node::handle_tx(Peer *peer, const crypto::bytes &payload) {
     return;
   broadcast_inv(peer, InventoryItemType::TRANSACTION,
                 tx_container->compute_hash());
+}
+
+void Node::handle_getblocks(Peer * peer, const crypto::bytes& payload) {
+    auto from_height_container = deserialize_getblocks(payload);
+    if(!from_height_container.has_value()) return;
+
+    std::lock_guard<std::mutex> lock(chain_mutex_);
+
+    for(auto i = static_cast<size_t>(*from_height_container); i < blockchain_.size(); i++) {
+        send_msg(peer, MessageType::BLOCK, blockchain_[i].serialize());
+    }
 }
 
 void Node::stop() {

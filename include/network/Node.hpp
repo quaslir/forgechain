@@ -51,6 +51,7 @@ private:
   void handle_getdata(Peer *peer, const crypto::bytes &payload);
   void handle_block(Peer *peer, const crypto::bytes &payload);
   void handle_tx(Peer *peer, const crypto::bytes &payload);
+  void handle_getblocks(Peer * peer, const crypto::bytes& payload);
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};
