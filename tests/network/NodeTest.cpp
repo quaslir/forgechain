@@ -1,5 +1,7 @@
 #include "network/Node.hpp"
 #include "network/Handshake.hpp"
+#include "core/Blockchain.hpp"
+#include "core/Mempool.hpp"
 #include "crypto/CommonTypes.hpp"
 
 #include <gtest/gtest.h>
@@ -15,6 +17,7 @@
 #include <vector>
 
 using namespace forgechain::network;
+using namespace forgechain::core;
 
 namespace {
 
@@ -26,6 +29,14 @@ uint16_t next_test_port() {
 VersionInfo make_version(uint64_t height = 0) {
     return VersionInfo{.protocol_version = 1, .chain_height = height, .timestamp = 0};
 }
+
+struct TestNode : Node {
+    Blockchain chain;
+    Mempool mempool;
+
+    TestNode(uint16_t port, VersionInfo info)
+        : Node(port, info, chain, mempool) {}
+};
 
 ::testing::AssertionResult RunWithTimeout(std::chrono::milliseconds timeout,
                                            const std::function<void()>& fn) {
@@ -52,23 +63,23 @@ size_t WaitForPeerCount(const Node& node, size_t expected, std::chrono::millisec
 
 
 TEST(Node, StartOnFreshPortSucceeds) {
-    Node node(next_test_port(), make_version());
+    TestNode node(next_test_port(), make_version());
     EXPECT_TRUE(node.start());
 }
 
 TEST(Node, PeerCountStartsAtZero) {
-    Node node(next_test_port(), make_version());
+    TestNode node(next_test_port(), make_version());
     ASSERT_TRUE(node.start());
     EXPECT_EQ(node.peer_count(), 0u);
 }
 
 TEST(Node, ClientConnectsAndBothSidesRegisterPeer) {
     uint16_t port = next_test_port();
-    Node server(port, make_version(5));
+    TestNode server(port, make_version(5));
     ASSERT_TRUE(server.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    Node client(0, make_version(3));
+    TestNode client(0, make_version(3));
     ASSERT_TRUE(client.connect_to_peer("127.0.0.1", port));
 
     EXPECT_EQ(WaitForPeerCount(server, 1, std::chrono::seconds(1)), 1u);
@@ -77,14 +88,14 @@ TEST(Node, ClientConnectsAndBothSidesRegisterPeer) {
 
 TEST(Node, MultiplePeersConnectSequentially) {
     uint16_t port = next_test_port();
-    Node server(port, make_version());
+    TestNode server(port, make_version());
     ASSERT_TRUE(server.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     constexpr int kNumClients = 5;
-    std::vector<std::unique_ptr<Node>> clients;
+    std::vector<std::unique_ptr<TestNode>> clients;
     for (int i = 0; i < kNumClients; ++i) {
-        clients.push_back(std::make_unique<Node>(0, make_version(static_cast<uint64_t>(i))));
+        clients.push_back(std::make_unique<TestNode>(0, make_version(static_cast<uint64_t>(i))));
         ASSERT_TRUE(clients.back()->connect_to_peer("127.0.0.1", port));
         std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
@@ -97,7 +108,7 @@ TEST(Node, MultiplePeersConnectSequentially) {
 }
 
 TEST(Node, ConnectToUnusedPortFailsQuickly) {
-    Node client(0, make_version());
+    TestNode client(0, make_version());
     auto start = std::chrono::steady_clock::now();
     bool connected = client.connect_to_peer("127.0.0.1", next_test_port());
     auto elapsed = std::chrono::steady_clock::now() - start;
@@ -109,21 +120,21 @@ TEST(Node, ConnectToUnusedPortFailsQuickly) {
 
 TEST(Node, SecondStartOnSamePortFailsWithoutCorruptingFirst) {
     uint16_t port = next_test_port();
-    Node node_a(port, make_version());
+    TestNode node_a(port, make_version());
     ASSERT_TRUE(node_a.start());
 
-    Node node_b(port, make_version());
+    TestNode node_b(port, make_version());
     EXPECT_FALSE(node_b.start());
 
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    Node client(0, make_version());
+    TestNode client(0, make_version());
     EXPECT_TRUE(client.connect_to_peer("127.0.0.1", port));
 }
 
 
 TEST(Node, DestructorDoesNotHangWithNoConnections) {
     EXPECT_TRUE(RunWithTimeout(std::chrono::seconds(3), [] {
-        Node node(next_test_port(), make_version());
+        TestNode node(next_test_port(), make_version());
         ASSERT_TRUE(node.start());
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }));
@@ -132,14 +143,14 @@ TEST(Node, DestructorDoesNotHangWithNoConnections) {
 TEST(Node, ImmediateDestructionRightAfterStartDoesNotHang) {
     for (int i = 0; i < 10; ++i) {
         EXPECT_TRUE(RunWithTimeout(std::chrono::seconds(2), [] {
-            Node node(next_test_port(), make_version());
+            TestNode node(next_test_port(), make_version());
             node.start();
         })) << "iteration " << i;
     }
 }
 
 TEST(Node, StopCanBeCalledMultipleTimesSafely) {
-    Node node(next_test_port(), make_version());
+    TestNode node(next_test_port(), make_version());
     ASSERT_TRUE(node.start());
     EXPECT_TRUE(RunWithTimeout(std::chrono::seconds(2), [&] {
         node.stop();
@@ -151,11 +162,11 @@ TEST(Node, StopCanBeCalledMultipleTimesSafely) {
 TEST(Node, DestructorDoesNotHangWithActiveConnectedPeer) {
     uint16_t port = next_test_port();
     EXPECT_TRUE(RunWithTimeout(std::chrono::seconds(3), [&] {
-        Node server(port, make_version());
+        TestNode server(port, make_version());
         server.start();
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-        Node client(0, make_version());
+        TestNode client(0, make_version());
         client.connect_to_peer("127.0.0.1", port);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -167,12 +178,12 @@ TEST(Node, DestructorDoesNotHangWithActiveConnectedPeer) {
 TEST(Node, PeerVanishingMidHandshakeDoesNotHangAcceptThread) {
     uint16_t port = next_test_port();
     EXPECT_TRUE(RunWithTimeout(std::chrono::seconds(10), [&] {
-        Node server(port, make_version());
+        TestNode server(port, make_version());
         ASSERT_TRUE(server.start());
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         for (int i = 0; i < 10; ++i) {
-            Node client(0, make_version(static_cast<uint64_t>(i)));
+            TestNode client(0, make_version(static_cast<uint64_t>(i)));
             client.connect_to_peer("127.0.0.1", port);
         }
     }));
@@ -181,14 +192,14 @@ TEST(Node, PeerVanishingMidHandshakeDoesNotHangAcceptThread) {
 
 TEST(Node, ConcurrentSimultaneousConnectionsAllSucceed) {
     uint16_t port = next_test_port();
-    Node server(port, make_version());
+    TestNode server(port, make_version());
     ASSERT_TRUE(server.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     constexpr int kNumClients = 10;
-    std::vector<std::unique_ptr<Node>> clients;
+    std::vector<std::unique_ptr<TestNode>> clients;
     for (int i = 0; i < kNumClients; ++i) {
-        clients.push_back(std::make_unique<Node>(0, make_version(static_cast<uint64_t>(i))));
+        clients.push_back(std::make_unique<TestNode>(0, make_version(static_cast<uint64_t>(i))));
     }
 
     std::vector<std::thread> connectors;
@@ -210,7 +221,7 @@ TEST(Node, ConcurrentSimultaneousConnectionsAllSucceed) {
 TEST(Node, ParallelChurnAcrossMultipleThreadsSettlesToZero) {
 
     uint16_t port = next_test_port();
-    Node server(port, make_version());
+    TestNode server(port, make_version());
     ASSERT_TRUE(server.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -223,7 +234,7 @@ TEST(Node, ParallelChurnAcrossMultipleThreadsSettlesToZero) {
         for (int t = 0; t < kThreads; ++t) {
             churners.emplace_back([&, t]() {
                 for (int r = 0; r < kRoundsPerThread; ++r) {
-                    Node client(0, make_version(static_cast<uint64_t>(t * 1000 + r)));
+                    TestNode client(0, make_version(static_cast<uint64_t>(t * 1000 + r)));
                     if (client.connect_to_peer("127.0.0.1", port)) {
                         ++total_connected;
                     }
@@ -240,11 +251,11 @@ TEST(Node, ParallelChurnAcrossMultipleThreadsSettlesToZero) {
 
 TEST(Node, PeerCountReflectsZeroImmediatelyAfterStop) {
     uint16_t port = next_test_port();
-    Node server(port, make_version());
+    TestNode server(port, make_version());
     ASSERT_TRUE(server.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    Node client(0, make_version());
+    TestNode client(0, make_version());
     ASSERT_TRUE(client.connect_to_peer("127.0.0.1", port));
     ASSERT_EQ(WaitForPeerCount(server, 1, std::chrono::seconds(1)), 1u);
 
@@ -258,11 +269,11 @@ TEST(Node, RepeatedStartStopCyclesOnDifferentPortsDoNotLeakOrHang) {
     for (int gen = 0; gen < kGenerations; ++gen) {
         uint16_t port = next_test_port();
         EXPECT_TRUE(RunWithTimeout(std::chrono::seconds(5), [&] {
-            Node server(port, make_version());
+            TestNode server(port, make_version());
             ASSERT_TRUE(server.start());
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-            Node client(0, make_version());
+            TestNode client(0, make_version());
             ASSERT_TRUE(client.connect_to_peer("127.0.0.1", port));
             ASSERT_EQ(WaitForPeerCount(server, 1, std::chrono::seconds(1)), 1u);
         })) << "generation " << gen;
