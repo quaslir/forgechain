@@ -7,6 +7,7 @@ Peer.cpp
 Node.cpp
 Inventory.cpp
 GetBlocks.cpp
+Heartbeat.cpp
 )
 
 target_include_directories(network PUBLIC

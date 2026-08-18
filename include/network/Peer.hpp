@@ -1,8 +1,10 @@
 #pragma once
 
 #include "network/Handshake.hpp"
+#include "network/Heartbeat.hpp"
 #include "network/TcpSocket.hpp"
 #include <atomic>
+#include <chrono>
 namespace forgechain::network {
 class Peer {
 public:
@@ -17,9 +19,13 @@ public:
   [[nodiscard]] bool is_alive() const;
   void mark_dead();
 
+  void touch();
+  [[nodiscard]] std::chrono::seconds elapsed() const;
+
 private:
   TcpSocket socket_;
   VersionInfo remote_version_;
   std::atomic<bool> alive_{true};
+  Heartbeat heartbeat_;
 };
 } // namespace forgechain::network

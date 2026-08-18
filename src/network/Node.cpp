@@ -33,6 +33,7 @@ bool Node::start() {
   running_.store(true);
   accept_thread_ = std::thread(&Node::accept_loop, this);
   cleaner_thread_ = std::thread(&Node::cleaner_loop, this);
+  ping_thread_ = std::thread(&Node::ping_loop, this);
   return true;
 }
 
@@ -48,7 +49,7 @@ void Node::peer_loop(Peer *peer) {
       peer->mark_dead();
       break;
     }
-
+    peer->touch();
     switch (msg.type) {
     case MessageType::INV:
       handle_inv(peer, msg.payload);
@@ -62,11 +63,17 @@ void Node::peer_loop(Peer *peer) {
     case MessageType::TX:
       handle_tx(peer, msg.payload);
       break;
-    case MessageType::GETBLOCKS :
-        handle_getblocks(peer, msg.payload);
+    case MessageType::GETBLOCKS:
+      handle_getblocks(peer, msg.payload);
+      break;
+    case MessageType::PING:
+        handle_ping(peer);
+        break;
+    case MessageType::PONG:
+        handle_pong();
         break;
     default:
-      break;
+        break;
     }
   }
 }
@@ -88,6 +95,28 @@ void Node::cleaner_loop() {
   }
 }
 
+void Node::ping_loop() {
+  while (running_) {
+    {
+      std::lock_guard<std::mutex> lock(peers_mutex_);
+
+      for (auto &peer_entry : peers_) {
+        if (!peer_entry.peer->is_alive())
+          continue;
+        if (peer_entry.peer->elapsed() >= PING_TIMEOUT) {
+          peer_entry.peer->mark_dead();
+          continue;
+        }
+        if (peer_entry.peer->elapsed() >= PING_INTERVAL) {
+          send_msg(peer_entry.peer.get(), MessageType::PING, {});
+        }
+      }
+    }
+
+    std::this_thread::sleep_for(PING_INTERVAL);
+  }
+}
+
 bool Node::register_new_peer(TcpSocket &&socket) {
   if (!socket.is_valid())
     return false;
@@ -105,10 +134,11 @@ bool Node::register_new_peer(TcpSocket &&socket) {
   Peer *raw_peer = peer.get();
 
   // sync between two peers
-  if(my_height < incoming_info->chain_height) {
-      if(!send_msg(raw_peer, MessageType::GETBLOCKS, serialize_getblocks(my_height))) return false;
+  if (my_height < incoming_info->chain_height) {
+    if (!send_msg(raw_peer, MessageType::GETBLOCKS,
+                  serialize_getblocks(my_height)))
+      return false;
   }
-
 
   std::thread worker{&Node::peer_loop, this, raw_peer};
   {
@@ -245,16 +275,23 @@ void Node::handle_tx(Peer *peer, const crypto::bytes &payload) {
                 tx_container->compute_hash());
 }
 
-void Node::handle_getblocks(Peer * peer, const crypto::bytes& payload) {
-    auto from_height_container = deserialize_getblocks(payload);
-    if(!from_height_container.has_value()) return;
+void Node::handle_getblocks(Peer *peer, const crypto::bytes &payload) {
+  auto from_height_container = deserialize_getblocks(payload);
+  if (!from_height_container.has_value())
+    return;
 
-    std::lock_guard<std::mutex> lock(chain_mutex_);
+  std::lock_guard<std::mutex> lock(chain_mutex_);
 
-    for(auto i = static_cast<size_t>(*from_height_container); i < blockchain_.size(); i++) {
-        send_msg(peer, MessageType::BLOCK, blockchain_[i].serialize());
-    }
+  for (auto i = static_cast<size_t>(*from_height_container);
+       i < blockchain_.size(); i++) {
+    send_msg(peer, MessageType::BLOCK, blockchain_[i].serialize());
+  }
 }
+
+void Node::handle_ping(Peer * peer) {
+    send_msg(peer, MessageType::PONG, {});
+}
+void Node::handle_pong() {}
 
 void Node::stop() {
   running_.store(false);
@@ -287,6 +324,9 @@ Node::~Node() {
   }
   if (cleaner_thread_.joinable()) {
     cleaner_thread_.join();
+  }
+  if(ping_thread_.joinable()) {
+      ping_thread_.join();
   }
 }
 } // namespace forgechain::network
