@@ -1,12 +1,15 @@
 #include "network/Node.hpp"
+#include "core/Block.hpp"
 #include "core/Blockchain.hpp"
 #include "core/Mempool.hpp"
+#include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "network/Handshake.hpp"
 #include "network/Inventory.hpp"
 #include "network/Message.hpp"
 #include "network/Peer.hpp"
 #include "network/TcpSocket.hpp"
+#include "consensus/ProofOfWork.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -117,6 +120,23 @@ bool Node::send_msg(Peer * peer, MessageType type, const crypto::bytes& payload)
     return send_message(peer->socket().fd(), msg);
 }
 
+bool Node::is_valid_new_block_unlocked(const core::Block& block) const {
+
+        if(block.prev_hash_ != blockchain_.latest().hash_) {
+            return false;
+    }
+
+    if(block.hash_ != block.compute_hash()) {
+        return false;
+    }
+
+    if(!consensus::meets_target(block.hash_, block.difficulty_)) {
+        return false;
+    }
+
+    return true;
+}
+
 void Node::handle_inv(Peer * peer, const crypto::bytes& payload) {
     auto items = deserialize_inventory(payload);
     if(!items.has_value()) return;
@@ -164,8 +184,19 @@ void Node::handle_getdata(Peer * peer, const crypto::bytes&payload) {
         }
     }
 }
+void Node::handle_block(const crypto::bytes& payload) {
+    auto block_container = core::Block::deserialize(payload);
+    if(!block_container.has_value()) return;
+    std::lock_guard<std::mutex> lock(chain_mutex_);
+    if(!is_valid_new_block_unlocked(*block_container)) return;
+    blockchain_.add_block(*block_container);
+}
 
-
+void Node::handle_tx(const crypto::bytes& payload) {
+    auto tx_container = core::Transaction::deserialize(payload);
+    if(!tx_container.has_value()) return;
+    //mempool_.add_transaction(*tx_container);
+}
 
 void Node::stop() {
   running_.store(false);
