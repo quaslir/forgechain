@@ -56,7 +56,10 @@ void Node::peer_loop(Peer *peer) {
             handle_getdata(peer, msg.payload);
             break;
         case MessageType::BLOCK :
+            handle_block(msg.payload);
+            break;
         case MessageType::TX :
+            handle_tx(msg.payload);
             break;
         default:
             break;
@@ -195,7 +198,7 @@ void Node::handle_block(const crypto::bytes& payload) {
 void Node::handle_tx(const crypto::bytes& payload) {
     auto tx_container = core::Transaction::deserialize(payload);
     if(!tx_container.has_value()) return;
-    //mempool_.add_transaction(*tx_container);
+    mempool_.add_transaction(*tx_container, tx_container->sender_public_key_);
 }
 
 void Node::stop() {

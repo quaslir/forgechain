@@ -5,11 +5,13 @@
 #include <cstdint>
 #include <utility>
 #include <optional>
+#include <algorithm>
 namespace forgechain::core {
-Transaction::Transaction(str sender, str recipient, uint64_t amount)
+Transaction::Transaction(str sender, str recipient, uint64_t amount, core::bytes sender_public_key)
     : sender_(std::move(sender)), recipient_(std::move(recipient)),
-      amount_(amount) {}
-crypto::bytes Transaction::serialize() const {
+       sender_public_key_(std::move(sender_public_key)), amount_(amount) {}
+crypto::bytes Transaction::serialize_for_signing() const {
+
   crypto::bytes out;
   out.insert(out.end(), reinterpret_cast<const uint8_t *>(&amount_),
              reinterpret_cast<const uint8_t *>(&amount_) + sizeof(amount_));
@@ -19,8 +21,20 @@ crypto::bytes Transaction::serialize() const {
   auto recipient_len = static_cast<uint32_t>(recipient_.size());
   out.insert(out.end(),reinterpret_cast<const uint8_t*>(&recipient_len) , reinterpret_cast<const uint8_t*>(&recipient_len) + sizeof(recipient_len));
   out.insert(out.end(), recipient_.begin(), recipient_.end());
-
+  auto sender_public_key_len = static_cast<uint32_t>(sender_public_key_.size());
+  out.insert(out.end(), reinterpret_cast<const uint8_t *>(&sender_public_key_len),
+      reinterpret_cast<const uint8_t *>(&sender_public_key_len) + sizeof(sender_public_key_len));
+  out.insert(out.end(), sender_public_key_.begin(), sender_public_key_.end());
   return out;
+}
+crypto::bytes Transaction::serialize() const {
+    crypto::bytes payload_without_signature = serialize_for_signing();
+    auto signature_len = static_cast<uint32_t>(signature_.size());
+    payload_without_signature.insert(payload_without_signature.end(), reinterpret_cast<const uint8_t *>(&signature_len),
+        reinterpret_cast<const uint8_t *>(&signature_len) + sizeof(signature_len));
+    payload_without_signature.insert(payload_without_signature.end(), signature_.begin(), signature_.end());
+
+    return payload_without_signature;
 }
 std::optional<Transaction> Transaction::deserialize(const crypto::bytes& payload) {
     size_t offset = 0;
@@ -50,11 +64,33 @@ recipient.resize(recipient_len);
 std::copy(payload.data() + offset, payload.data() + offset + recipient_len, recipient.data());
 offset += recipient_len;
 
+if(payload.size() < offset + sizeof(uint32_t)) return std::nullopt;
+uint32_t sender_public_key_len = *reinterpret_cast<const uint32_t*>(payload.data() + offset);
+offset += sizeof(sender_public_key_len);
+
+if(payload.size() < offset + sender_public_key_len) return std::nullopt;
+core::bytes sender_public_key(sender_public_key_len);
+std::copy(payload.data() + offset, payload.data() + offset + sender_public_key_len, sender_public_key.data());
+offset += sender_public_key_len;
+
+if(payload.size() < offset + sizeof(uint32_t)) return std::nullopt;
+uint32_t signature_len = *reinterpret_cast<const uint32_t*>(payload.data() + offset);
+offset += sizeof(signature_len);
+
+if(payload.size() < offset + signature_len) return std::nullopt;
+core::bytes signature(signature_len);
+std::copy(payload.data() + offset, payload.data() + offset + signature_len, signature.data());
+offset += signature_len;
+
+
 if(payload.size() != offset) return std::nullopt;
-return Transaction{sender, recipient, amount_};
+
+Transaction tx{sender, recipient, amount_, std::move(sender_public_key)};
+tx.signature_ = std::move(signature);
+return tx;
 }
 crypto::HashBytes Transaction::compute_hash() const {
-  return crypto::double_sha_256(serialize());
+  return crypto::double_sha_256(serialize_for_signing());
 }
 bool Transaction::operator==(const Transaction &tx) {
   return sender_ == tx.sender_ && recipient_ == tx.recipient_ &&

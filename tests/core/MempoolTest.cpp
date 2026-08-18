@@ -26,8 +26,8 @@ Wallet make_wallet() {
 
 Transaction make_signed_tx(const Wallet& sender, const str& recipient, uint64_t amount,
                             bytes* out_signature = nullptr) {
-    Transaction tx(sender.address, recipient, amount);
-    bytes signature = sign(tx.serialize(), sender.keys.private_key);
+    Transaction tx(sender.address, recipient, amount, sender.keys.public_key);
+    bytes signature = sign(tx.serialize_for_signing(), sender.keys.private_key);
     tx.signature_ = signature;
     if (out_signature) *out_signature = signature;
     return tx;
@@ -49,8 +49,8 @@ TEST(Mempool, RejectsTransactionWithInvalidSignature) {
     Wallet alice = make_wallet();
     Wallet mallory = make_wallet();
 
-    Transaction tx(alice.address, "bob-address", 100);
-    tx.signature_ = sign(tx.serialize(), mallory.keys.private_key);
+    Transaction tx(alice.address, "bob-address", 100, alice.keys.public_key);
+    tx.signature_ = sign(tx.serialize_for_signing(), mallory.keys.private_key);
 
     EXPECT_FALSE(mempool.add_transaction(tx, alice.keys.public_key));
     EXPECT_EQ(mempool.size(), 0u);
@@ -61,10 +61,10 @@ TEST(Mempool, RejectsTransactionWhenPublicKeyDoesNotMatchClaimedSender) {
     Wallet alice = make_wallet();
     Wallet mallory = make_wallet();
 
-    Transaction tx(alice.address, "bob-address", 100);
-    tx.signature_ = sign(tx.serialize(), mallory.keys.private_key);
+    Transaction tx(alice.address, "bob-address", 100, mallory.keys.public_key);
+    tx.signature_ = sign(tx.serialize_for_signing(), mallory.keys.private_key);
 
-    EXPECT_TRUE(verify(tx.serialize(), tx.signature_, mallory.keys.public_key));
+    EXPECT_TRUE(verify(tx.serialize_for_signing(), tx.signature_, mallory.keys.public_key));
     EXPECT_FALSE(mempool.add_transaction(tx, mallory.keys.public_key));
     EXPECT_EQ(mempool.size(), 0u);
 }
@@ -73,10 +73,10 @@ TEST(Mempool, RejectsTransactionWithTamperedAmount) {
     Mempool mempool;
     Wallet alice = make_wallet();
 
-    Transaction original(alice.address, "bob-address", 100);
-    bytes signature = sign(original.serialize(), alice.keys.private_key);
+    Transaction original(alice.address, "bob-address", 100, alice.keys.public_key);
+    bytes signature = sign(original.serialize_for_signing(), alice.keys.private_key);
 
-    Transaction tampered(alice.address, "bob-address", 999999);
+    Transaction tampered(alice.address, "bob-address", 999999, alice.keys.public_key);
     tampered.signature_ = signature;
 
     EXPECT_FALSE(mempool.add_transaction(tampered, alice.keys.public_key));
@@ -87,7 +87,7 @@ TEST(Mempool, RejectsTransactionWithEmptySignature) {
     Mempool mempool;
     Wallet alice = make_wallet();
 
-    Transaction tx(alice.address, "bob-address", 100);
+    Transaction tx(alice.address, "bob-address", 100, alice.keys.public_key);
 
     EXPECT_FALSE(mempool.add_transaction(tx, alice.keys.public_key));
 }
@@ -136,8 +136,8 @@ TEST(Mempool, RemainsEmptyAfterRejectedTransaction) {
     Wallet alice = make_wallet();
     Wallet mallory = make_wallet();
 
-    Transaction tx(alice.address, "bob-address", 10);
-    tx.signature_ = sign(tx.serialize(), mallory.keys.private_key);
+    Transaction tx(alice.address, "bob-address", 10, alice.keys.public_key);
+    tx.signature_ = sign(tx.serialize_for_signing(), mallory.keys.private_key);
     mempool.add_transaction(tx, alice.keys.public_key);
 
     EXPECT_TRUE(mempool.empty());

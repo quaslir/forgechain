@@ -12,7 +12,7 @@ bool Mempool::add_transaction(const Transaction &tx,
                               const crypto::bytes &sender_public_key) {
   if (crypto::derive_address(sender_public_key) != tx.sender_)
     return false;
-  if (!crypto::verify(tx.serialize(), tx.signature_, sender_public_key))
+  if (!crypto::verify(tx.serialize_for_signing(), tx.signature_, sender_public_key))
     return false;
   pending_.push_back(tx);
   return true;
