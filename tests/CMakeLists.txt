@@ -35,6 +35,7 @@ add_forgechain_test_executable(core_tests
     core/LedgerTest.cpp
     core/MempoolTest.cpp
     core/OrphanPoolTest.cpp
+    core/ForkResolutionTest.cpp
 )
 
 add_forgechain_test_executable(consensus_tests

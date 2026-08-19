@@ -5,6 +5,7 @@ add_library(core
    Ledger.cpp
    Mempool.cpp
    OrphanPool.cpp
+   ForkResolution.cpp
 )
 
 target_include_directories(core PUBLIC ${CMAKE_SOURCE_DIR}/src)

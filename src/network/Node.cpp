@@ -255,9 +255,13 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
   case core::BlockValidation::Valid:
     broadcast_inv(peer, InventoryItemType::BLOCK, hash);
     break;
-  case core::BlockValidation::ForkCandidate:
+  case core::BlockValidation::ForkCandidate: {
+      std::lock_guard<std::mutex> orphan_lock(orphan_mutex_);
       orphan_pool_.add_orphan(std::move(*block_container));
-    break;
+          break;
+  }
+
+
   case core::BlockValidation::Invalid:
     break;
   }

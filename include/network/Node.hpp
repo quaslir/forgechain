@@ -72,5 +72,6 @@ private:
   std::thread ping_thread_;
   mutable std::mutex peers_mutex_;
   mutable std::mutex chain_mutex_;
+  mutable std::mutex orphan_mutex_;
 };
 } // namespace forgechain::network
