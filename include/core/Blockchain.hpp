@@ -11,7 +11,7 @@ class Blockchain {
 public:
   Blockchain();
 
-  void add_block(const Block &block);
+  void add_block(Block &&block);
 
   [[nodiscard]] const Block &latest() const;
   [[nodiscard]] const Block &at(size_t height) const;

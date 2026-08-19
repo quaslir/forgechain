@@ -3,7 +3,9 @@
 #include "crypto/CommonTypes.hpp"
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <utility>
 namespace forgechain::core {
 using forgechain::core::Block;
 using forgechain::crypto::HashBytes;
@@ -12,7 +14,12 @@ Blockchain::Blockchain() {
   blocks_.push_back(genesis);
 }
 
-void Blockchain::add_block(const Block &block) { blocks_.push_back(block); }
+void Blockchain::add_block(Block &&block) {
+    uint64_t prev_cumulative_work = size() > 0 ? blocks_.back().cumulative_work_ : 0;
+    uint64_t current_cumulative_work = block.block_work() + prev_cumulative_work;
+    block.cumulative_work_ = current_cumulative_work;
+    blocks_.push_back(std::move(block));
+}
 bool Blockchain::has_block(const crypto::HashBytes &hash) const {
   auto it =
       std::find_if(blocks_.begin(), blocks_.end(),

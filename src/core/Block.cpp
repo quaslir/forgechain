@@ -8,6 +8,7 @@
 #include <optional>
 #include <utility>
 #include <vector>
+#include <limits>
 namespace forgechain::core {
 Block::Block(uint32_t version, HashBytes prev_hash, uint64_t timestamp,
              std::vector<Transaction> transactions)
@@ -142,5 +143,10 @@ std::optional<Block> Block::deserialize(const crypto::bytes &payload) {
   block.hash_ = block.compute_hash();
   return block;
 }
-
+uint64_t Block::block_work() const {
+    if(difficulty_ >= 64) {
+        return std::numeric_limits<uint64_t>::max();
+    }
+    return 1ULL << difficulty_;
+}
 } // namespace forgechain::core

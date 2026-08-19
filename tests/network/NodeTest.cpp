@@ -15,7 +15,7 @@
 #include <memory>
 #include <thread>
 #include <vector>
-
+#include <cstddef>
 using namespace forgechain::network;
 using namespace forgechain::core;
 

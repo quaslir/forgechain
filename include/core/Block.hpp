@@ -14,7 +14,7 @@ struct Block {
   uint64_t timestamp_;
   uint32_t difficulty_;
   uint32_t nonce_;
-
+  uint64_t cumulative_work_;
   std::vector<Transaction> transactions_;
   HashBytes hash_;
 
@@ -25,5 +25,6 @@ struct Block {
   [[nodiscard]] std::vector<uint8_t> serialize() const;
 
   static std::optional<Block> deserialize(const crypto::bytes &payload);
+ [[nodiscard]] uint64_t block_work() const;
 };
 } // namespace forgechain::core

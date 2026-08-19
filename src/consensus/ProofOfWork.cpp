@@ -91,4 +91,6 @@ uint32_t retarget(uint32_t old_difficulty, uint64_t actual_time_seconds,
 
   return old_difficulty;
 }
+
+
 } // namespace forgechain::consensus

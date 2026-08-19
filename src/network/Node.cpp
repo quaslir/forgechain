@@ -254,14 +254,15 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
   auto block_container = core::Block::deserialize(payload);
   if (!block_container.has_value())
     return;
+  crypto::HashBytes hash = block_container->hash_;
   {
     std::lock_guard<std::mutex> lock(chain_mutex_);
     if (!is_valid_new_block_unlocked(*block_container))
       return;
-    blockchain_.add_block(*block_container);
+    blockchain_.add_block(std::move(*block_container));
   }
 
-  broadcast_inv(peer, InventoryItemType::BLOCK, block_container->hash_);
+  broadcast_inv(peer, InventoryItemType::BLOCK, hash);
 }
 
 void Node::handle_tx(Peer *peer, const crypto::bytes &payload) {
