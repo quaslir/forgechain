@@ -25,6 +25,6 @@ struct Block {
   [[nodiscard]] std::vector<uint8_t> serialize() const;
 
   static std::optional<Block> deserialize(const crypto::bytes &payload);
- [[nodiscard]] uint64_t block_work() const;
+  [[nodiscard]] uint64_t block_work() const;
 };
 } // namespace forgechain::core

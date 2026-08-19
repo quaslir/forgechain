@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cstdint>
 #include "crypto/CommonTypes.hpp"
+#include <cstdint>
 namespace forgechain::network {
-    struct PeerAddress {
-        crypto::str host;
-        uint16_t port;
-    };
-}
+struct PeerAddress {
+  crypto::str host;
+  uint16_t port;
+};
+} // namespace forgechain::network

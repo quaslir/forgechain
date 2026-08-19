@@ -2,6 +2,7 @@
 #include "network/Handshake.hpp"
 #include "core/Blockchain.hpp"
 #include "core/Mempool.hpp"
+#include "core/OrphanPool.hpp"
 #include "crypto/CommonTypes.hpp"
 
 #include <gtest/gtest.h>
@@ -15,6 +16,7 @@
 #include <memory>
 #include <thread>
 #include <vector>
+#include <functional>
 #include <cstddef>
 using namespace forgechain::network;
 using namespace forgechain::core;
@@ -33,9 +35,10 @@ VersionInfo make_version(uint64_t height = 0) {
 struct TestNode : Node {
     Blockchain chain;
     Mempool mempool;
+    OrphanPool orphan_pool;
 
     TestNode(uint16_t port, VersionInfo info)
-        : Node(port, info, chain, mempool) {}
+        : Node(port, info, chain, mempool, orphan_pool) {}
 };
 
 ::testing::AssertionResult RunWithTimeout(std::chrono::milliseconds timeout,

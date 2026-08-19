@@ -1,4 +1,5 @@
 #include "core/Blockchain.hpp"
+#include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
 #include "crypto/CommonTypes.hpp"
 #include <algorithm>
@@ -15,10 +16,11 @@ Blockchain::Blockchain() {
 }
 
 void Blockchain::add_block(Block &&block) {
-    uint64_t prev_cumulative_work = size() > 0 ? blocks_.back().cumulative_work_ : 0;
-    uint64_t current_cumulative_work = block.block_work() + prev_cumulative_work;
-    block.cumulative_work_ = current_cumulative_work;
-    blocks_.push_back(std::move(block));
+  uint64_t prev_cumulative_work =
+      size() > 0 ? blocks_.back().cumulative_work_ : 0;
+  uint64_t current_cumulative_work = block.block_work() + prev_cumulative_work;
+  block.cumulative_work_ = current_cumulative_work;
+  blocks_.push_back(std::move(block));
 }
 bool Blockchain::has_block(const crypto::HashBytes &hash) const {
   auto it =
@@ -27,7 +29,6 @@ bool Blockchain::has_block(const crypto::HashBytes &hash) const {
 
   return it != blocks_.end();
 }
-
 
 std::optional<Block> Blockchain::find(const crypto::HashBytes &hash) const {
   for (const auto &block : blocks_) {
@@ -59,5 +60,17 @@ size_t Blockchain::size() const { return blocks_.size(); }
 [[nodiscard]] bool Blockchain::empty() const { return blocks_.size() == 0; }
 [[nodiscard]] const Block &Blockchain::operator[](size_t height) const {
   return blocks_[height];
+}
+
+BlockValidation Blockchain::classify_new_block(const core::Block &block) const {
+  if (block.hash_ != block.compute_hash()) {
+    return BlockValidation::Invalid;
+  }
+
+  if (block.prev_hash_ != latest().hash_) {
+    return BlockValidation::ForkCandidate;
+  }
+
+  return BlockValidation::Valid;
 }
 } // namespace forgechain::core

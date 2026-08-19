@@ -3,11 +3,13 @@
 #include "core/Block.hpp"
 #include "crypto/CommonTypes.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <optional>
-#include <unordered_map>
 #include <vector>
 namespace forgechain::core {
 using forgechain::core::Block;
+
+enum class BlockValidation : uint8_t { Valid, Invalid, ForkCandidate };
 class Blockchain {
 public:
   Blockchain();
@@ -21,7 +23,8 @@ public:
   [[nodiscard]] bool is_valid() const;
   [[nodiscard]] bool empty() const;
   [[nodiscard]] const Block &operator[](size_t height) const;
-
+  [[nodiscard]] BlockValidation
+  classify_new_block(const core::Block &block) const;
 
 private:
   std::vector<Block> blocks_;
