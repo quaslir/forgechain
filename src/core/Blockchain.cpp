@@ -28,6 +28,7 @@ bool Blockchain::has_block(const crypto::HashBytes &hash) const {
   return it != blocks_.end();
 }
 
+
 std::optional<Block> Blockchain::find(const crypto::HashBytes &hash) const {
   for (const auto &block : blocks_) {
     if (block.hash_ == hash) {
