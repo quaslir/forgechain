@@ -4,6 +4,7 @@
 #include "network/TcpSocket.hpp"
 #include "core/Blockchain.hpp"
 #include "core/Mempool.hpp"
+#include "core/OrphanPool.hpp"
 #include "core/Block.hpp"
 #include "core/Transaction.hpp"
 #include "consensus/ProofOfWork.hpp"
@@ -21,7 +22,7 @@
 #include <memory>
 #include <thread>
 #include <vector>
-
+#include <cstddef>
 using namespace forgechain::network;
 using namespace forgechain::core;
 using namespace forgechain::consensus;
@@ -92,13 +93,15 @@ TEST(Propagation, ValidBlockFromOnePeerReachesSecondPeer) {
 
     Blockchain chain_a;
     Mempool mempool_a;
-    Node node_a(port_a, make_version(), chain_a, mempool_a);
+    OrphanPool orphan_pool_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
     Mempool mempool_b;
-    Node node_b(port_b, make_version(), chain_b, mempool_b);
+    OrphanPool orphan_pool_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -126,13 +129,15 @@ TEST(Propagation, ValidTransactionFromOnePeerReachesSecondPeer) {
 
     Blockchain chain_a;
     Mempool mempool_a;
-    Node node_a(port_a, make_version(), chain_a, mempool_a);
+    OrphanPool orphan_pool_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
     Mempool mempool_b;
-    Node node_b(port_b, make_version(), chain_b, mempool_b);
+    OrphanPool orphan_pool_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -162,13 +167,15 @@ TEST(Propagation, ForgedTransactionIsNeitherStoredNorRelayed) {
 
     Blockchain chain_a;
     Mempool mempool_a;
-    Node node_a(port_a, make_version(), chain_a, mempool_a);
+    OrphanPool orphan_pool_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
     Mempool mempool_b;
-    Node node_b(port_b, make_version(), chain_b, mempool_b);
+    OrphanPool orphan_pool_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -191,4 +198,90 @@ TEST(Propagation, ForgedTransactionIsNeitherStoredNorRelayed) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     EXPECT_FALSE(mempool_a.has_transaction(forged_hash));
     EXPECT_FALSE(mempool_b.has_transaction(forged_hash));
+}
+
+TEST(Propagation, BlockWithWrongPrevHashIsNeitherStoredNorRelayed) {
+    uint16_t port_a = next_test_port();
+    uint16_t port_b = next_test_port();
+
+    Blockchain chain_a;
+    Mempool mempool_a;
+    OrphanPool orphan_pool_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
+    ASSERT_TRUE(node_a.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    Blockchain chain_b;
+    Mempool mempool_b;
+    OrphanPool orphan_pool_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
+    ASSERT_TRUE(node_b.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    ASSERT_TRUE(node_b.connect_to_peer("127.0.0.1", port_a));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
+
+    RawPeer source;
+    ASSERT_TRUE(source.connect(port_a, make_version()));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
+
+    constexpr uint32_t kTestDifficulty = 8;
+    HashBytes wrong_parent{};
+    wrong_parent[0] = 0xAB;
+    wrong_parent[1] = 0xCD;
+    Block orphan = mine_block(1, wrong_parent, 1700000000, kTestDifficulty, {});
+    ASSERT_NE(orphan.prev_hash_, chain_a.latest().hash_);
+
+    size_t height_before = chain_a.size();
+    ASSERT_TRUE(source.send(MessageType::BLOCK, orphan.serialize()));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    EXPECT_EQ(chain_a.size(), height_before)
+        << "Node A accepted a block with a prev_hash_ that doesn't match its chain tip";
+    EXPECT_FALSE(chain_b.has_block(orphan.hash_))
+        << "Node B received a block that A should never have relayed";
+}
+
+
+TEST(Propagation, BlockWithTamperedHashIsNeitherStoredNorRelayed) {
+    uint16_t port_a = next_test_port();
+    uint16_t port_b = next_test_port();
+
+    Blockchain chain_a;
+    Mempool mempool_a;
+    OrphanPool orphan_pool_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
+    ASSERT_TRUE(node_a.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    Blockchain chain_b;
+    Mempool mempool_b;
+    OrphanPool orphan_pool_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
+    ASSERT_TRUE(node_b.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    ASSERT_TRUE(node_b.connect_to_peer("127.0.0.1", port_a));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
+
+    RawPeer source;
+    ASSERT_TRUE(source.connect(port_a, make_version()));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
+
+    constexpr uint32_t kTestDifficulty = 8;
+    Block mined = mine_block(1, chain_a.latest().hash_, 1700000000, kTestDifficulty, {});
+
+    Block tampered = mined;
+    tampered.timestamp_ = mined.timestamp_ + 12345;
+    ASSERT_NE(tampered.compute_hash(), tampered.hash_)
+        << "test setup invariant broken: tampering did not change compute_hash()";
+
+    size_t height_before = chain_a.size();
+    ASSERT_TRUE(source.send(MessageType::BLOCK, tampered.serialize()));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    EXPECT_EQ(chain_a.size(), height_before)
+        << "Node A accepted a block whose hash_ doesn't match compute_hash()";
+    EXPECT_FALSE(chain_b.has_block(tampered.hash_))
+        << "Node B received a block that A should never have relayed";
 }

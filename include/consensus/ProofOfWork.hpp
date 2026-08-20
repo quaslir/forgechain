@@ -14,4 +14,5 @@ Block mine_block(uint32_t version, HashBytes prev_hash, uint64_t timestamp,
                  std::vector<core::Transaction> transactions);
 uint32_t retarget(uint32_t old_difficulty, uint64_t actual_time_seconds,
                   uint64_t expected_time_seconds);
+uint64_t block_work(uint32_t difficulty);
 } // namespace forgechain::consensus

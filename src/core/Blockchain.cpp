@@ -1,9 +1,13 @@
 #include "core/Blockchain.hpp"
+#include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
 #include "crypto/CommonTypes.hpp"
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <utility>
+#include "core/ForkResolution.hpp"
 namespace forgechain::core {
 using forgechain::core::Block;
 using forgechain::crypto::HashBytes;
@@ -12,7 +16,13 @@ Blockchain::Blockchain() {
   blocks_.push_back(genesis);
 }
 
-void Blockchain::add_block(const Block &block) { blocks_.push_back(block); }
+void Blockchain::add_block(Block &&block) {
+  uint64_t prev_cumulative_work =
+      size() > 0 ? blocks_.back().cumulative_work_ : 0;
+  uint64_t current_cumulative_work = block.block_work() + prev_cumulative_work;
+  block.cumulative_work_ = current_cumulative_work;
+  blocks_.push_back(std::move(block));
+}
 bool Blockchain::has_block(const crypto::HashBytes &hash) const {
   auto it =
       std::find_if(blocks_.begin(), blocks_.end(),
@@ -28,6 +38,15 @@ std::optional<Block> Blockchain::find(const crypto::HashBytes &hash) const {
     }
   }
   return std::nullopt;
+}
+std::optional<size_t> Blockchain::find_height(const crypto::HashBytes& hash) const {
+    for(size_t height = 0; height < blocks_.size(); height++) {
+        if(blocks_[height].hash_ == hash) {
+            return height;
+        }
+    }
+
+    return std::nullopt;
 }
 
 const Block &Blockchain::at(size_t height) const { return blocks_.at(height); }
@@ -51,5 +70,26 @@ size_t Blockchain::size() const { return blocks_.size(); }
 [[nodiscard]] bool Blockchain::empty() const { return blocks_.size() == 0; }
 [[nodiscard]] const Block &Blockchain::operator[](size_t height) const {
   return blocks_[height];
+}
+
+BlockValidation Blockchain::classify_new_block(const core::Block &block) const {
+  if (block.hash_ != block.compute_hash()) {
+    return BlockValidation::Invalid;
+  }
+
+  if (block.prev_hash_ != latest().hash_) {
+    return BlockValidation::ForkCandidate;
+  }
+
+  return BlockValidation::Valid;
+}
+bool Blockchain::reorganize_to(ForkChain&& fork) {
+   auto height = find_height(fork.common_ancestor.hash_);
+   if(!height.has_value()) return false;
+blocks_.erase(blocks_.begin() + static_cast<long>(*height) + 1, blocks_.end());
+for(auto&& block : fork.blocks) {
+    add_block(std::move(block));
+}
+return true;
 }
 } // namespace forgechain::core

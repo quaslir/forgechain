@@ -3,6 +3,7 @@
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
 #include "core/Mempool.hpp"
+#include "core/OrphanPool.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "network/Handshake.hpp"
 #include "network/Inventory.hpp"
@@ -15,9 +16,11 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 namespace forgechain::network {
+
 struct PeerEntry {
   std::unique_ptr<Peer> peer;
   std::thread worker;
@@ -30,7 +33,7 @@ constexpr auto PING_TIMEOUT = std::chrono::seconds(45);
 class Node {
 public:
   Node(uint16_t listen_port, VersionInfo info, core::Blockchain &blockchain,
-       core::Mempool &mempool);
+       core::Mempool &mempool, core::OrphanPool& orphan_pool);
   ~Node();
   bool start();
   void stop();
@@ -45,8 +48,7 @@ private:
   void cleaner_loop();
   void ping_loop();
   bool send_msg(Peer *peer, MessageType type, const crypto::bytes &payload);
-  [[nodiscard]] bool
-  is_valid_new_block_unlocked(const core::Block &block) const;
+
   bool register_new_peer(TcpSocket &&socket);
   void broadcast_inv(Peer *exclude, InventoryItemType type,
                      const crypto::HashBytes &hash);
@@ -57,12 +59,13 @@ private:
   void handle_getblocks(Peer *peer, const crypto::bytes &payload);
   void handle_ping(Peer *peer);
   void handle_pong();
-
+  std::optional<std::vector<crypto::HashBytes>> try_reorg(const core::Block& candidate);
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};
   core::Blockchain &blockchain_;
   core::Mempool &mempool_;
+  core::OrphanPool& orphan_pool_;
   VectorPeers peers_;
   std::atomic<bool> running_{false};
   std::thread accept_thread_;
@@ -70,5 +73,6 @@ private:
   std::thread ping_thread_;
   mutable std::mutex peers_mutex_;
   mutable std::mutex chain_mutex_;
+  mutable std::mutex orphan_mutex_;
 };
 } // namespace forgechain::network

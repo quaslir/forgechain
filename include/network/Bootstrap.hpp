@@ -1,9 +1,10 @@
 #pragma once
 
-#include "network/PeerAddress.hpp"
 #include "crypto/CommonTypes.hpp"
-#include <vector>
+#include "network/PeerAddress.hpp"
 #include <optional>
+#include <vector>
 namespace forgechain::network {
-    std::optional<std::vector<PeerAddress>> load_bootstrap_peers(const crypto::str& path);
+std::optional<std::vector<PeerAddress>>
+load_bootstrap_peers(const crypto::str &path);
 }

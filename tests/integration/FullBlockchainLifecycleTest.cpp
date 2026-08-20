@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <gtest/gtest.h>
+#include <utility>
 #include <vector>
 using namespace forgechain::core;
 using namespace forgechain::consensus;
@@ -61,7 +62,7 @@ TEST(FullBlockchainLifecycle, WalletToMinedBlockToLedgerEndToEnd) {
         EXPECT_TRUE(ledger.apply_transaction(minedTx));
         mempool.remove_transaction(minedTx);
     }
-    chain.add_block(mined);
+    chain.add_block(std::move(mined));
 
     EXPECT_EQ(chain.size(), 2u);
     EXPECT_TRUE(mempool.empty());
@@ -92,7 +93,7 @@ TEST(FullBlockchainLifecycle, MultipleTransactionsInOneMinedBlock) {
         ASSERT_TRUE(ledger.apply_transaction(tx));
         mempool.remove_transaction(tx);
     }
-    chain.add_block(mined);
+    chain.add_block(std::move(mined));
 
     EXPECT_TRUE(mempool.empty());
     EXPECT_TRUE(chain.is_valid());
@@ -125,7 +126,7 @@ TEST(FullBlockchainLifecycle, TwoBlocksMinedSequentiallyDrainMempoolCorrectly) {
         ASSERT_TRUE(ledger.apply_transaction(tx));
         mempool.remove_transaction(tx);
     }
-    chain.add_block(block1);
+    chain.add_block(std::move(block1));
 
     EXPECT_EQ(mempool.size(), 1u);
 
@@ -136,7 +137,7 @@ TEST(FullBlockchainLifecycle, TwoBlocksMinedSequentiallyDrainMempoolCorrectly) {
         ASSERT_TRUE(ledger.apply_transaction(tx));
         mempool.remove_transaction(tx);
     }
-    chain.add_block(block2);
+    chain.add_block(std::move(block2));
 
     EXPECT_TRUE(mempool.empty());
     EXPECT_EQ(chain.size(), 3u);
@@ -173,7 +174,7 @@ TEST(FullBlockchainLifecycle, TotalSupplyConservedAcrossMinedBlocks) {
                 mempool.remove_transaction(tx);
             }
         }
-        chain.add_block(mined);
+        chain.add_block(std::move(mined));
     }
 
     EXPECT_TRUE(chain.is_valid());
@@ -194,7 +195,7 @@ TEST(FullBlockchainLifecycle, TamperedMinedTransactionFailsBlockIntegrityCheck) 
 
     auto txs = mempool.get_transactions_for_block(10);
     Block mined = mine_block(1, chain.latest().hash_, 1700000000, kTestDifficulty, txs);
-    chain.add_block(mined);
+    chain.add_block(std::move(mined));
 
     ASSERT_TRUE(chain.is_valid());
 
@@ -219,7 +220,7 @@ TEST(FullBlockchainLifecycle, ChainRemainsValidWhenTamperedBlockIsNotActuallyIns
 
     auto txs = mempool.get_transactions_for_block(10);
     Block mined = mine_block(1, chain.latest().hash_, 1700000000, kTestDifficulty, txs);
-    chain.add_block(mined);
+    chain.add_block(std::move(mined));
 
     Block tamperedCopy = chain.at(1);
     tamperedCopy.transactions_[0].amount_ = 999999;
@@ -275,7 +276,7 @@ TEST(FullBlockchainLifecycle, MultipleWalletsMultipleRoundsStayConsistent) {
         EXPECT_TRUE(ledger.apply_transaction(tx));
         mempool.remove_transaction(tx);
     }
-    chain.add_block(mined);
+    chain.add_block(std::move(mined));
 
     EXPECT_TRUE(chain.is_valid());
     EXPECT_TRUE(mempool.empty());

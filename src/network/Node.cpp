@@ -2,7 +2,9 @@
 #include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
+#include "core/ForkResolution.hpp"
 #include "core/Mempool.hpp"
+#include "core/OrphanPool.hpp"
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "network/GetBlocks.hpp"
@@ -19,11 +21,12 @@
 #include <thread>
 #include <utility>
 #include <vector>
+#include <optional>
 namespace forgechain::network {
 Node::Node(uint16_t listen_port, VersionInfo info, core::Blockchain &blockchain,
-           core::Mempool &mempool)
+           core::Mempool &mempool, core::OrphanPool& orphan_pool)
     : listen_port_(listen_port), info_(info), blockchain_(blockchain),
-      mempool_(mempool) {}
+      mempool_(mempool), orphan_pool_(orphan_pool) {}
 
 bool Node::start() {
   listener_ = listen_on(listen_port_);
@@ -67,13 +70,13 @@ void Node::peer_loop(Peer *peer) {
       handle_getblocks(peer, msg.payload);
       break;
     case MessageType::PING:
-        handle_ping(peer);
-        break;
+      handle_ping(peer);
+      break;
     case MessageType::PONG:
-        handle_pong();
-        break;
+      handle_pong();
+      break;
     default:
-        break;
+      break;
     }
   }
 }
@@ -171,23 +174,6 @@ bool Node::send_msg(Peer *peer, MessageType type,
   return send_message(peer->socket().fd(), msg);
 }
 
-bool Node::is_valid_new_block_unlocked(const core::Block &block) const {
-
-  if (block.prev_hash_ != blockchain_.latest().hash_) {
-    return false;
-  }
-
-  if (block.hash_ != block.compute_hash()) {
-    return false;
-  }
-
-  if (!consensus::meets_target(block.hash_, block.difficulty_)) {
-    return false;
-  }
-
-  return true;
-}
-
 void Node::broadcast_inv(Peer *exclude, InventoryItemType type,
                          const crypto::HashBytes &hash) {
   InventoryItem item{.type = type, .hash = hash};
@@ -254,14 +240,46 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
   auto block_container = core::Block::deserialize(payload);
   if (!block_container.has_value())
     return;
+  crypto::HashBytes hash = block_container->hash_;
+  if (!consensus::meets_target(hash, block_container->difficulty_))
+    return;
+
+  core::BlockValidation block_status;
   {
     std::lock_guard<std::mutex> lock(chain_mutex_);
-    if (!is_valid_new_block_unlocked(*block_container))
-      return;
-    blockchain_.add_block(*block_container);
+    block_status = blockchain_.classify_new_block(*block_container);
+    if (block_status == core::BlockValidation::Valid) {
+      blockchain_.add_block(std::move(*block_container));
+    }
   }
 
-  broadcast_inv(peer, InventoryItemType::BLOCK, block_container->hash_);
+  switch (block_status) {
+  case core::BlockValidation::Valid:
+    broadcast_inv(peer, InventoryItemType::BLOCK, hash);
+    break;
+  case core::BlockValidation::ForkCandidate: {
+      core::Block fork_candidate_block{*block_container};
+
+      std::unique_lock<std::mutex> chain_lock(chain_mutex_);
+      std::unique_lock<std::mutex> orphan_lock(orphan_mutex_);
+
+      orphan_pool_.add_orphan(std::move(*block_container));
+      auto reorg_hashes = try_reorg(fork_candidate_block);
+      chain_lock.unlock();
+      orphan_lock.unlock();
+
+      if(reorg_hashes.has_value()) {
+          for(const auto& reorg_hash : *reorg_hashes) {
+              broadcast_inv(peer, InventoryItemType::BLOCK, reorg_hash);
+          }
+      }
+          break;
+  }
+
+
+  case core::BlockValidation::Invalid:
+    break;
+  }
 }
 
 void Node::handle_tx(Peer *peer, const crypto::bytes &payload) {
@@ -288,11 +306,23 @@ void Node::handle_getblocks(Peer *peer, const crypto::bytes &payload) {
   }
 }
 
-void Node::handle_ping(Peer * peer) {
-    send_msg(peer, MessageType::PONG, {});
-}
+void Node::handle_ping(Peer *peer) { send_msg(peer, MessageType::PONG, {}); }
 void Node::handle_pong() {}
+std::optional<std::vector<crypto::HashBytes>> Node::try_reorg(const core::Block& candidate) {
+    auto fork_chain =  core::build_fork_chain(blockchain_, orphan_pool_, candidate);
 
+    if(!fork_chain.has_value()) return std::nullopt;
+    if(!core::is_fork_heavier(blockchain_, *fork_chain)) return std::nullopt;
+    std::vector<crypto::HashBytes> new_hashes;
+
+    for(const auto& block : fork_chain->blocks) {
+        new_hashes.push_back(block.hash_);
+    }
+
+    if(!blockchain_.reorganize_to(std::move(*fork_chain))) return std::nullopt;
+
+    return new_hashes;
+}
 void Node::stop() {
   running_.store(false);
   listener_.close_socket();
@@ -325,8 +355,8 @@ Node::~Node() {
   if (cleaner_thread_.joinable()) {
     cleaner_thread_.join();
   }
-  if(ping_thread_.joinable()) {
-      ping_thread_.join();
+  if (ping_thread_.joinable()) {
+    ping_thread_.join();
   }
 }
 } // namespace forgechain::network
