@@ -2,6 +2,7 @@
 #include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
+#include "core/ForkResolution.hpp"
 #include "core/Mempool.hpp"
 #include "core/OrphanPool.hpp"
 #include "core/Transaction.hpp"
@@ -20,6 +21,7 @@
 #include <thread>
 #include <utility>
 #include <vector>
+#include <optional>
 namespace forgechain::network {
 Node::Node(uint16_t listen_port, VersionInfo info, core::Blockchain &blockchain,
            core::Mempool &mempool, core::OrphanPool& orphan_pool)
@@ -256,8 +258,21 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
     broadcast_inv(peer, InventoryItemType::BLOCK, hash);
     break;
   case core::BlockValidation::ForkCandidate: {
-      std::lock_guard<std::mutex> orphan_lock(orphan_mutex_);
+      core::Block fork_candidate_block{*block_container};
+
+      std::unique_lock<std::mutex> chain_lock(chain_mutex_);
+      std::unique_lock<std::mutex> orphan_lock(orphan_mutex_);
+
       orphan_pool_.add_orphan(std::move(*block_container));
+      auto reorg_hashes = try_reorg(fork_candidate_block);
+      chain_lock.unlock();
+      orphan_lock.unlock();
+
+      if(reorg_hashes.has_value()) {
+          for(const auto& reorg_hash : *reorg_hashes) {
+              broadcast_inv(peer, InventoryItemType::BLOCK, reorg_hash);
+          }
+      }
           break;
   }
 
@@ -293,7 +308,21 @@ void Node::handle_getblocks(Peer *peer, const crypto::bytes &payload) {
 
 void Node::handle_ping(Peer *peer) { send_msg(peer, MessageType::PONG, {}); }
 void Node::handle_pong() {}
+std::optional<std::vector<crypto::HashBytes>> Node::try_reorg(const core::Block& candidate) {
+    auto fork_chain =  core::build_fork_chain(blockchain_, orphan_pool_, candidate);
 
+    if(!fork_chain.has_value()) return std::nullopt;
+    if(!core::is_fork_heavier(blockchain_, *fork_chain)) return std::nullopt;
+    std::vector<crypto::HashBytes> new_hashes;
+
+    for(const auto& block : fork_chain->blocks) {
+        new_hashes.push_back(block.hash_);
+    }
+
+    if(!blockchain_.reorganize_to(std::move(*fork_chain))) return std::nullopt;
+
+    return new_hashes;
+}
 void Node::stop() {
   running_.store(false);
   listener_.close_socket();

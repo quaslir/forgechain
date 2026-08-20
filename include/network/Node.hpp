@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 namespace forgechain::network {
@@ -58,7 +59,7 @@ private:
   void handle_getblocks(Peer *peer, const crypto::bytes &payload);
   void handle_ping(Peer *peer);
   void handle_pong();
-
+  std::optional<std::vector<crypto::HashBytes>> try_reorg(const core::Block& candidate);
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};
