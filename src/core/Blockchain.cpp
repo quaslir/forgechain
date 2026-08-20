@@ -1,5 +1,4 @@
 #include "core/Blockchain.hpp"
-#include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
 #include "crypto/CommonTypes.hpp"
 #include <algorithm>
@@ -8,6 +7,7 @@
 #include <optional>
 #include <utility>
 #include "core/ForkResolution.hpp"
+#include <vector>
 namespace forgechain::core {
 using forgechain::core::Block;
 using forgechain::crypto::HashBytes;
@@ -83,13 +83,14 @@ BlockValidation Blockchain::classify_new_block(const core::Block &block) const {
 
   return BlockValidation::Valid;
 }
-bool Blockchain::reorganize_to(ForkChain&& fork) {
+std::optional<std::vector<Block>> Blockchain::reorganize_to(ForkChain&& fork) {
    auto height = find_height(fork.common_ancestor.hash_);
-   if(!height.has_value()) return false;
+   if(!height.has_value()) return std::nullopt;
+std::vector<Block> discarded(blocks_.begin() + static_cast<long>(*height) + 1, blocks_.end());
 blocks_.erase(blocks_.begin() + static_cast<long>(*height) + 1, blocks_.end());
 for(auto&& block : fork.blocks) {
     add_block(std::move(block));
 }
-return true;
+return discarded;
 }
 } // namespace forgechain::core

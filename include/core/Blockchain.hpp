@@ -26,7 +26,7 @@ public:
     [[nodiscard]] const Block &operator[](size_t height) const;
     [[nodiscard]] BlockValidation
     classify_new_block(const core::Block &block) const;
-    [[nodiscard]] bool reorganize_to(ForkChain && fork);
+    [[nodiscard]] std::optional<std::vector<Block>> reorganize_to(ForkChain && fork);
 private:
   std::vector<Block> blocks_;
 };
