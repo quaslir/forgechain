@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <unordered_set>
 #include <sys/socket.h>
 #include <thread>
 #include <utility>
@@ -314,12 +315,22 @@ std::optional<std::vector<crypto::HashBytes>> Node::try_reorg(const core::Block&
     if(!fork_chain.has_value()) return std::nullopt;
     if(!core::is_fork_heavier(blockchain_, *fork_chain)) return std::nullopt;
     std::vector<crypto::HashBytes> new_hashes;
-
+    std::unordered_set<core::HashBytes, crypto::HashBytesHasher> tx_hashes;
     for(const auto& block : fork_chain->blocks) {
         new_hashes.push_back(block.hash_);
+        for(const auto& tx: block.transactions_) {
+            tx_hashes.insert(tx.compute_hash());
+        }
     }
+    auto reorganize_result = blockchain_.reorganize_to(std::move(*fork_chain));
+    if(!reorganize_result.has_value()) return std::nullopt;
 
-    if(!blockchain_.reorganize_to(std::move(*fork_chain))) return std::nullopt;
+for(const auto& block : *reorganize_result) {
+   for(const auto& tx : block.transactions_) {
+       if(tx_hashes.contains(tx.compute_hash())) continue;
+       mempool_.add_transaction(tx, tx.sender_public_key_);
+   }
+}
 
     return new_hashes;
 }
