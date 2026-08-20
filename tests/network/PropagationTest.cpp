@@ -242,7 +242,6 @@ TEST(Propagation, BlockWithWrongPrevHashIsNeitherStoredNorRelayed) {
         << "Node B received a block that A should never have relayed";
 }
 
-
 TEST(Propagation, BlockWithTamperedHashIsNeitherStoredNorRelayed) {
     uint16_t port_a = next_test_port();
     uint16_t port_b = next_test_port();
@@ -271,6 +270,9 @@ TEST(Propagation, BlockWithTamperedHashIsNeitherStoredNorRelayed) {
     constexpr uint32_t kTestDifficulty = 8;
     Block mined = mine_block(1, chain_a.latest().hash_, 1700000000, kTestDifficulty, {});
 
+    // Mutate the block's timestamp AFTER mining without recomputing hash_,
+    // simulating a tampered/forged block whose declared hash no longer
+    // matches its actual contents.
     Block tampered = mined;
     tampered.timestamp_ = mined.timestamp_ + 12345;
     ASSERT_NE(tampered.compute_hash(), tampered.hash_)
@@ -284,4 +286,100 @@ TEST(Propagation, BlockWithTamperedHashIsNeitherStoredNorRelayed) {
         << "Node A accepted a block whose hash_ doesn't match compute_hash()";
     EXPECT_FALSE(chain_b.has_block(tampered.hash_))
         << "Node B received a block that A should never have relayed";
+}
+
+TEST(Propagation, HeavierForkTriggersReorgAndPropagatesToPeer) {
+    uint16_t port_a = next_test_port();
+    uint16_t port_b = next_test_port();
+
+    Blockchain chain_a;
+    Mempool mempool_a;
+    OrphanPool orphan_pool_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
+    ASSERT_TRUE(node_a.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    Blockchain chain_b;
+    Mempool mempool_b;
+    OrphanPool orphan_pool_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
+    ASSERT_TRUE(node_b.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    ASSERT_TRUE(node_b.connect_to_peer("127.0.0.1", port_a));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
+
+    RawPeer source;
+    ASSERT_TRUE(source.connect(port_a, make_version()));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
+
+    HashBytes genesisHash = chain_a.latest().hash_;
+
+    constexpr uint32_t kWeakDifficulty = 6;
+    Block weakBlock = mine_block(1, genesisHash, 1700000000, kWeakDifficulty, {});
+    ASSERT_TRUE(source.send(MessageType::BLOCK, weakBlock.serialize()));
+    ASSERT_TRUE(WaitUntil([&] { return chain_a.has_block(weakBlock.hash_); }, std::chrono::seconds(2)))
+        << "Node A never accepted the initial weak block";
+    ASSERT_TRUE(WaitUntil([&] { return chain_b.has_block(weakBlock.hash_); }, std::chrono::seconds(2)))
+        << "Node B never received the initial weak block";
+
+    constexpr uint32_t kHeavyDifficulty = 12;
+    Block heavyBlock = mine_block(1, genesisHash, 1700000001, kHeavyDifficulty, {});
+    ASSERT_NE(heavyBlock.hash_, weakBlock.hash_);
+    ASSERT_TRUE(source.send(MessageType::BLOCK, heavyBlock.serialize()));
+
+    ASSERT_TRUE(WaitUntil([&] { return chain_a.latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
+        << "Node A never reorganized onto the heavier fork";
+    EXPECT_FALSE(chain_a.has_block(weakBlock.hash_))
+        << "Node A's weak block should have been discarded by the reorg";
+
+    ASSERT_TRUE(WaitUntil([&] { return chain_b.latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
+        << "Node B never received the heavier block via post-reorg broadcast";
+}
+
+TEST(Propagation, ReorgReturnsDiscardedTransactionToMempool) {
+    uint16_t port_a = next_test_port();
+    uint16_t port_b = next_test_port();
+
+    Blockchain chain_a;
+    Mempool mempool_a;
+    OrphanPool orphan_pool_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
+    ASSERT_TRUE(node_a.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    Blockchain chain_b;
+    Mempool mempool_b;
+    OrphanPool orphan_pool_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
+    ASSERT_TRUE(node_b.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    ASSERT_TRUE(node_b.connect_to_peer("127.0.0.1", port_a));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
+
+    RawPeer source;
+    ASSERT_TRUE(source.connect(port_a, make_version()));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
+
+    HashBytes genesisHash = chain_a.latest().hash_;
+
+    Wallet alice = make_wallet();
+    Transaction orphanedTx = make_signed_tx(alice, "bob-address", 100);
+    auto orphanedTxHash = orphanedTx.compute_hash();
+
+    constexpr uint32_t kWeakDifficulty = 6;
+    Block weakBlock = mine_block(1, genesisHash, 1700000000, kWeakDifficulty, {orphanedTx});
+    ASSERT_TRUE(source.send(MessageType::BLOCK, weakBlock.serialize()));
+    ASSERT_TRUE(WaitUntil([&] { return chain_a.has_block(weakBlock.hash_); }, std::chrono::seconds(2)));
+
+    constexpr uint32_t kHeavyDifficulty = 12;
+    Block heavyBlock = mine_block(1, genesisHash, 1700000001, kHeavyDifficulty, {});
+    ASSERT_TRUE(source.send(MessageType::BLOCK, heavyBlock.serialize()));
+
+    ASSERT_TRUE(WaitUntil([&] { return chain_a.latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
+        << "Node A never reorganized onto the heavier fork";
+
+    ASSERT_TRUE(WaitUntil([&] { return mempool_a.has_transaction(orphanedTxHash); }, std::chrono::seconds(2)))
+        << "Discarded transaction was never returned to Node A's mempool after reorg";
 }

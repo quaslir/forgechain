@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <stdexcept>
 #include "crypto/CommonTypes.hpp"
+#include "core/ForkResolution.hpp"
 #include <utility>
 using namespace forgechain::core;
 using forgechain::crypto::HashBytes;
@@ -278,4 +279,137 @@ TEST(BlockchainValidation, InvalidStaysInvalidEvenWithMoreHonestBlocksAfter) {
     }
 
     EXPECT_FALSE(chain.is_valid());
+}
+
+TEST(Blockchain, FindHeightLocatesGenesis) {
+    Blockchain chain;
+    auto height = chain.find_height(chain.latest().hash_);
+    ASSERT_TRUE(height.has_value());
+    EXPECT_EQ(*height, 0u);
+}
+
+TEST(Blockchain, FindHeightLocatesNonGenesisBlock) {
+    Blockchain chain;
+    Block a(1, chain.latest().hash_, 1000, {});
+    HashBytes aHash = a.hash_;
+    chain.add_block(std::move(a));
+    Block b(1, chain.latest().hash_, 2000, {});
+    chain.add_block(std::move(b));
+
+    auto height = chain.find_height(aHash);
+    ASSERT_TRUE(height.has_value());
+    EXPECT_EQ(*height, 1u);
+}
+
+TEST(Blockchain, FindHeightReturnsNulloptForUnknownHash) {
+    Blockchain chain;
+    HashBytes unknown{};
+    unknown[0] = 0xFF;
+    EXPECT_FALSE(chain.find_height(unknown).has_value());
+}
+
+TEST(Blockchain, ReorganizeToSucceedsAndReplacesTip) {
+    Blockchain chain;
+    Block a(1, chain.latest().hash_, 1000, {});
+    chain.add_block(std::move(a));
+    Block b(1, chain.latest().hash_, 2000, {});
+    chain.add_block(std::move(b));
+
+    HashBytes genesisHash = chain.at(0).hash_;
+    Block fork1(1, genesisHash, 5000, {});
+    fork1.difficulty_ = 10;
+    fork1.hash_ = fork1.compute_hash();
+    HashBytes fork1Hash = fork1.hash_;
+    Block ancestor = chain.at(0);
+
+    ForkChain fc{.blocks = {fork1}, .common_ancestor = ancestor};
+    auto discarded = chain.reorganize_to(std::move(fc));
+
+    ASSERT_TRUE(discarded.has_value());
+    EXPECT_EQ(chain.size(), 2u);
+    EXPECT_EQ(chain.latest().hash_, fork1Hash);
+    EXPECT_EQ(chain.at(0).hash_, genesisHash);
+}
+
+TEST(Blockchain, ReorganizeToReturnsDiscardedBlocksInOriginalOrder) {
+    Blockchain chain;
+    Block a(1, chain.latest().hash_, 1000, {});
+    HashBytes aHash = a.hash_;
+    chain.add_block(std::move(a));
+    Block b(1, chain.latest().hash_, 2000, {});
+    HashBytes bHash = b.hash_;
+    chain.add_block(std::move(b));
+
+    Block ancestor = chain.at(0);
+    HashBytes genesisHash = ancestor.hash_;
+    Block fork1(1, genesisHash, 5000, {});
+    fork1.difficulty_ = 10;
+    fork1.hash_ = fork1.compute_hash();
+
+    ForkChain fc{.blocks = {fork1}, .common_ancestor = ancestor};
+    auto discarded = chain.reorganize_to(std::move(fc));
+
+    ASSERT_TRUE(discarded.has_value());
+    ASSERT_EQ(discarded->size(), 2u);
+    EXPECT_EQ((*discarded)[0].hash_, aHash);
+    EXPECT_EQ((*discarded)[1].hash_, bHash);
+}
+
+TEST(Blockchain, ReorganizeToReturnsNulloptWhenAncestorNotFound) {
+    Blockchain chain;
+    Block a(1, chain.latest().hash_, 1000, {});
+    chain.add_block(std::move(a));
+
+    HashBytes unknownAncestorHash{};
+    unknownAncestorHash[0] = 0xEE;
+    Block fakeAncestor(1, HashBytes{}, 0, {});
+    fakeAncestor.hash_ = unknownAncestorHash;
+
+    Block fork1(1, unknownAncestorHash, 5000, {});
+    fork1.difficulty_ = 10;
+    fork1.hash_ = fork1.compute_hash();
+
+    size_t sizeBefore = chain.size();
+    ForkChain fc{.blocks = {fork1}, .common_ancestor = fakeAncestor};
+    auto discarded = chain.reorganize_to(std::move(fc));
+
+    EXPECT_FALSE(discarded.has_value());
+    EXPECT_EQ(chain.size(), sizeBefore);
+}
+
+TEST(Blockchain, ReorganizeToRecomputesCumulativeWorkForAppliedBlocks) {
+    Blockchain chain;
+    Block a(1, chain.latest().hash_, 1000, {});
+    a.difficulty_ = 2;
+    a.hash_ = a.compute_hash();
+    chain.add_block(std::move(a));
+
+    Block ancestor = chain.at(0);
+    Block fork1(1, ancestor.hash_, 5000, {});
+    fork1.difficulty_ = 4;
+    fork1.hash_ = fork1.compute_hash();
+    Block fork2(1, fork1.hash_, 5001, {});
+    fork2.difficulty_ = 4;
+    fork2.hash_ = fork2.compute_hash();
+
+    ForkChain fc{.blocks = {fork1, fork2}, .common_ancestor = ancestor};
+    auto discarded = chain.reorganize_to(std::move(fc));
+
+    ASSERT_TRUE(discarded.has_value());
+    EXPECT_EQ(chain.latest().cumulative_work_, fork1.block_work() + fork2.block_work());
+}
+
+TEST(Blockchain, ReorganizeToWithNoDiscardedBlocksReturnsEmptyVector) {
+    Blockchain chain;
+    Block ancestor = chain.at(0);
+    Block fork1(1, ancestor.hash_, 5000, {});
+    fork1.difficulty_ = 3;
+    fork1.hash_ = fork1.compute_hash();
+
+    ForkChain fc{.blocks = {fork1}, .common_ancestor = ancestor};
+    auto discarded = chain.reorganize_to(std::move(fc));
+
+    ASSERT_TRUE(discarded.has_value());
+    EXPECT_TRUE(discarded->empty());
+    EXPECT_EQ(chain.size(), 2u);
 }
