@@ -7,6 +7,7 @@
 #include "core/OrphanPool.hpp"
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
+#include "crypto/Hash.hpp"
 #include "network/GetBlocks.hpp"
 #include "network/Handshake.hpp"
 #include "network/Inventory.hpp"
@@ -23,6 +24,7 @@
 #include <utility>
 #include <vector>
 #include <optional>
+#include <iostream>
 namespace forgechain::network {
 Node::Node(uint16_t listen_port, VersionInfo info, core::Blockchain &blockchain,
            core::Mempool &mempool, core::OrphanPool& orphan_pool)
@@ -324,6 +326,11 @@ std::optional<std::vector<crypto::HashBytes>> Node::try_reorg(const core::Block&
     }
     auto reorganize_result = blockchain_.reorganize_to(std::move(*fork_chain));
     if(!reorganize_result.has_value()) return std::nullopt;
+    std::cerr << "[NODE:" << listen_port_ << "] [REORG] switched to heavier branch: "
+              << "discarded " << reorganize_result->size() << " block(s), "
+              << "applied " << new_hashes.size() << " block(s), "
+              << "new tip=" << crypto::to_hex(new_hashes.back()).substr(0, 12) << "..."
+              << std::endl;
 
 for(const auto& block : *reorganize_result) {
    for(const auto& tx : block.transactions_) {
