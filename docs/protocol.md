@@ -213,3 +213,129 @@ building `#20`–`#24`:
   and reconnection backoff strategy belong in `#20`.
 - **Maximum message size**: mentioned in §1 as a required check, exact
   value left to `#20`.
+
+## 7. Fork resolution and reorganization
+
+When a node receives a valid `BLOCK` whose `prev_hash_` does not match its
+current chain tip, this is not necessarily invalid data -- it may be the
+start of a competing branch (fork). This section describes how a node
+detects, evaluates, and (if warranted) switches to such a branch. The full
+rationale for the weight metric is in `docs/fork-resolution.md`; this
+section covers how it fits into the message-handling flow described in
+§5 above.
+
+### 7.1 Fork detection
+
+On receiving a `BLOCK`, a node classifies it into exactly one of three
+outcomes (`Blockchain::classify_new_block`):
+
+- **Invalid** -- the block's declared hash does not match a fresh
+  `compute_hash()` over its own fields. The content has been tampered
+  with or is forged. The block is dropped immediately and never
+  considered for propagation or fork resolution, regardless of what its
+  `prev_hash_` claims.
+- **Valid** -- the block's hash is authentic and `prev_hash_` matches the
+  current chain tip. It is appended to the chain and re-announced via
+  `INV` as in §5.
+- **ForkCandidate** -- the block's hash is authentic, but `prev_hash_`
+  points at an earlier block than the current tip. This is a legitimate
+  competing branch, not garbage; it is *not* re-announced immediately
+  (the node hasn't accepted it into its own chain yet), and is instead
+  held for evaluation as described next.
+
+Order matters: content authenticity is always checked before the
+prev_hash_ comparison, so a forged block can never be misclassified as a
+fork candidate just because it happens to carry an unrelated
+`prev_hash_`.
+
+### 7.2 Orphan pool
+
+A `ForkCandidate` block is stored in a per-node orphan pool, keyed by its
+own hash (`OrphanPool::add_orphan`), rather than discarded. This allows a
+multi-block competing branch to be assembled incrementally as its blocks
+arrive out of order or across multiple `BLOCK` messages, without requiring
+all of them to arrive before any progress can be evaluated.
+
+### 7.3 Locating the common ancestor
+
+After a block is added to the orphan pool, the node attempts to trace a
+path from that block backward through `prev_hash_` links -- through other
+orphan-pool entries if necessary -- until it reconnects with a block
+already present in the node's own chain (`build_fork_chain`). This
+reconnection point is the *common ancestor*: where the competing branch
+diverges from the node's current history.
+
+This walk is capped at **`kMaxForkDepth` (100 blocks)** -- if no
+connection to the main chain is found within that many hops, the branch
+is treated as still-incomplete (more blocks may arrive later) rather than
+immediately retried on every subsequent block. This cap exists because an
+arbitrarily deep claimed fork (e.g. branching from hundreds of blocks
+ago) is far more likely to indicate an attack or a wildly stale/malicious
+peer than ordinary network latency -- legitimate forks in this network
+are expected to be shallow, since block propagation (§5) is fast relative
+to block production. A fork this deep is rejected outright: `nullopt` is
+returned, the node's chain is left untouched, and no further work is
+attempted on that branch until it either reaches the cap again with a
+different/updated tip or is superseded by unrelated activity.
+
+### 7.4 Weight comparison
+
+Once a full path to a common ancestor is found, the node compares the
+total accumulated work of the competing branch against its own chain's
+tip (`is_fork_heavier`):
+
+```
+branch_work = common_ancestor.cumulative_work_
+            + sum(block_work(b.difficulty_) for b in branch_blocks)
+
+switch_to_branch = branch_work > chain.latest().cumulative_work_
+```
+
+Where `block_work(difficulty) = 2^difficulty` (see `docs/fork-resolution.md`
+§3 for the full derivation from PoW target probability). The comparison is
+**strict** (`>`, not `>=`): a tie does not trigger a switch, to avoid a
+node flapping between two equally-heavy chains as new blocks trickle in
+from each side.
+
+This is why the common ancestor block itself is carried alongside the
+branch (rather than the branch's blocks being compared in isolation) --
+orphan-pool blocks never pass through the normal chain-append path and so
+never accumulate a meaningful `cumulative_work_` of their own; the
+ancestor's already-correct value from the main chain is the necessary
+starting point for an apples-to-apples comparison.
+
+### 7.5 Reorganization procedure
+
+If the competing branch is heavier, the node performs a reorganization
+(`Blockchain::reorganize_to`):
+
+1. Locate the common ancestor's height in the current chain.
+2. Discard every block after that height (the losing branch).
+3. Append the competing branch's blocks on top, in order, exactly as if
+   each had arrived individually via normal block acceptance (§7.1) --
+   this recomputes `cumulative_work_` correctly for each newly-applied
+   block.
+
+The blocks discarded in step 2 are returned to the caller so their
+transactions can be handled -- see §7.6.
+
+### 7.6 Mempool reinsertion
+
+Transactions that were only present in the discarded (losing) blocks are
+not simply lost: each is re-inserted into the node's mempool, so it can be
+mined again in a future block, **unless** that same transaction (by hash)
+is also present somewhere in the newly-adopted branch -- which can happen
+if the transaction had independently propagated to and been mined by
+whichever peer produced the winning branch. Re-inserting a transaction
+that's already confirmed in the adopted chain would risk it being mined a
+second time, effectively double-spending the same funds.
+
+### 7.7 Propagation after a reorg
+
+Once a reorganization completes, the newly-adopted branch's blocks are
+announced via `INV` (§5) to the node's peers, one per block in the branch
+(oldest first) -- not just the new tip. This ensures peers that don't
+already share any of the intermediate blocks can still request and adopt
+each one in turn via ordinary `GETDATA`/`BLOCK` exchange, rather than
+receiving only the final tip and being unable to link it back to their
+own chain.
