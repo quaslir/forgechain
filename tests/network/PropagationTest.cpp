@@ -5,6 +5,7 @@
 #include "core/Blockchain.hpp"
 #include "core/Mempool.hpp"
 #include "core/OrphanPool.hpp"
+#include "core/Ledger.hpp"
 #include "core/Block.hpp"
 #include "core/Transaction.hpp"
 #include "consensus/ProofOfWork.hpp"
@@ -94,14 +95,16 @@ TEST(Propagation, ValidBlockFromOnePeerReachesSecondPeer) {
     Blockchain chain_a;
     Mempool mempool_a;
     OrphanPool orphan_pool_a;
-    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
+    Ledger ledger_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a, ledger_a);
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
     Mempool mempool_b;
     OrphanPool orphan_pool_b;
-    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
+    Ledger ledger_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b, ledger_b);
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -130,14 +133,16 @@ TEST(Propagation, ValidTransactionFromOnePeerReachesSecondPeer) {
     Blockchain chain_a;
     Mempool mempool_a;
     OrphanPool orphan_pool_a;
-    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
+    Ledger ledger_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a, ledger_a);
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
     Mempool mempool_b;
     OrphanPool orphan_pool_b;
-    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
+    Ledger ledger_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b, ledger_b);
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -168,14 +173,16 @@ TEST(Propagation, ForgedTransactionIsNeitherStoredNorRelayed) {
     Blockchain chain_a;
     Mempool mempool_a;
     OrphanPool orphan_pool_a;
-    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
+    Ledger ledger_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a, ledger_a);
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
     Mempool mempool_b;
     OrphanPool orphan_pool_b;
-    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
+    Ledger ledger_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b, ledger_b);
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -207,14 +214,16 @@ TEST(Propagation, BlockWithWrongPrevHashIsNeitherStoredNorRelayed) {
     Blockchain chain_a;
     Mempool mempool_a;
     OrphanPool orphan_pool_a;
-    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
+    Ledger ledger_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a, ledger_a);
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
     Mempool mempool_b;
     OrphanPool orphan_pool_b;
-    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
+    Ledger ledger_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b, ledger_b);
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -249,14 +258,16 @@ TEST(Propagation, BlockWithTamperedHashIsNeitherStoredNorRelayed) {
     Blockchain chain_a;
     Mempool mempool_a;
     OrphanPool orphan_pool_a;
-    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
+    Ledger ledger_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a, ledger_a);
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
     Mempool mempool_b;
     OrphanPool orphan_pool_b;
-    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
+    Ledger ledger_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b, ledger_b);
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -269,10 +280,6 @@ TEST(Propagation, BlockWithTamperedHashIsNeitherStoredNorRelayed) {
 
     constexpr uint32_t kTestDifficulty = 8;
     Block mined = mine_block(1, chain_a.latest().hash_, 1700000000, kTestDifficulty, {});
-
-    // Mutate the block's timestamp AFTER mining without recomputing hash_,
-    // simulating a tampered/forged block whose declared hash no longer
-    // matches its actual contents.
     Block tampered = mined;
     tampered.timestamp_ = mined.timestamp_ + 12345;
     ASSERT_NE(tampered.compute_hash(), tampered.hash_)
@@ -295,14 +302,16 @@ TEST(Propagation, HeavierForkTriggersReorgAndPropagatesToPeer) {
     Blockchain chain_a;
     Mempool mempool_a;
     OrphanPool orphan_pool_a;
-    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
+    Ledger ledger_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a, ledger_a);
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
     Mempool mempool_b;
     OrphanPool orphan_pool_b;
-    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
+    Ledger ledger_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b, ledger_b);
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -344,14 +353,16 @@ TEST(Propagation, ReorgReturnsDiscardedTransactionToMempool) {
     Blockchain chain_a;
     Mempool mempool_a;
     OrphanPool orphan_pool_a;
-    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a);
+    Ledger ledger_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a, ledger_a);
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
     Mempool mempool_b;
     OrphanPool orphan_pool_b;
-    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b);
+    Ledger ledger_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b, ledger_b);
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -365,6 +376,8 @@ TEST(Propagation, ReorgReturnsDiscardedTransactionToMempool) {
     HashBytes genesisHash = chain_a.latest().hash_;
 
     Wallet alice = make_wallet();
+    ledger_a.set_balance(alice.address, 1000);
+
     Transaction orphanedTx = make_signed_tx(alice, "bob-address", 100);
     auto orphanedTxHash = orphanedTx.compute_hash();
 
@@ -382,4 +395,107 @@ TEST(Propagation, ReorgReturnsDiscardedTransactionToMempool) {
 
     ASSERT_TRUE(WaitUntil([&] { return mempool_a.has_transaction(orphanedTxHash); }, std::chrono::seconds(2)))
         << "Discarded transaction was never returned to Node A's mempool after reorg";
+}
+
+TEST(Propagation, LedgerBalanceUpdatesOnBothNodesAfterBlockWithRealTransaction) {
+    uint16_t port_a = next_test_port();
+    uint16_t port_b = next_test_port();
+
+    Blockchain chain_a;
+    Mempool mempool_a;
+    OrphanPool orphan_pool_a;
+    Ledger ledger_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a, ledger_a);
+    ASSERT_TRUE(node_a.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    Blockchain chain_b;
+    Mempool mempool_b;
+    OrphanPool orphan_pool_b;
+    Ledger ledger_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b, ledger_b);
+    ASSERT_TRUE(node_b.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    ASSERT_TRUE(node_b.connect_to_peer("127.0.0.1", port_a));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
+
+    RawPeer source;
+    ASSERT_TRUE(source.connect(port_a, make_version()));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
+
+    Wallet alice = make_wallet();
+
+    ledger_a.set_balance(alice.address, 1000);
+    ledger_b.set_balance(alice.address, 1000);
+
+    Transaction tx = make_signed_tx(alice, "bob-address", 250);
+
+    Block block = mine_block(1, chain_a.latest().hash_, 1700000000, 8, {tx});
+    ASSERT_TRUE(source.send(MessageType::BLOCK, block.serialize()));
+
+    ASSERT_TRUE(WaitUntil([&] { return chain_a.has_block(block.hash_); }, std::chrono::seconds(2)))
+        << "Node A never accepted the block";
+    ASSERT_TRUE(WaitUntil([&] { return chain_b.has_block(block.hash_); }, std::chrono::seconds(2)))
+        << "Node B never received the block";
+
+    ASSERT_TRUE(WaitUntil([&] {
+        auto balance = ledger_a.get_balance(alice.address);
+        return balance.has_value() && *balance == 750u;
+    }, std::chrono::seconds(2))) << "Node A's ledger was never updated by the transaction";
+
+    ASSERT_TRUE(WaitUntil([&] {
+        auto balance = ledger_b.get_balance(alice.address);
+        return balance.has_value() && *balance == 750u;
+    }, std::chrono::seconds(2))) << "Node B's ledger was never updated by the transaction";
+
+    auto aliceBalanceB = ledger_b.get_balance(alice.address);
+    auto bobBalanceB = ledger_b.get_balance("bob-address");
+    ASSERT_TRUE(aliceBalanceB.has_value());
+    ASSERT_TRUE(bobBalanceB.has_value());
+    EXPECT_EQ(*aliceBalanceB, 750u);
+    EXPECT_EQ(*bobBalanceB, 250u);
+}
+
+TEST(Propagation, BlockWithUnaffordableTransactionIsRejectedNotJustSkipped) {
+    uint16_t port_a = next_test_port();
+    uint16_t port_b = next_test_port();
+
+    Blockchain chain_a;
+    Mempool mempool_a;
+    OrphanPool orphan_pool_a;
+    Ledger ledger_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a, ledger_a);
+    ASSERT_TRUE(node_a.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    Blockchain chain_b;
+    Mempool mempool_b;
+    OrphanPool orphan_pool_b;
+    Ledger ledger_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b, ledger_b);
+    ASSERT_TRUE(node_b.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    ASSERT_TRUE(node_b.connect_to_peer("127.0.0.1", port_a));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
+
+    RawPeer source;
+    ASSERT_TRUE(source.connect(port_a, make_version()));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
+
+    Wallet alice = make_wallet();
+    Transaction tx = make_signed_tx(alice, "bob-address", 250);
+
+    size_t heightBefore = chain_a.size();
+    Block block = mine_block(1, chain_a.latest().hash_, 1700000000, 8, {tx});
+    ASSERT_TRUE(source.send(MessageType::BLOCK, block.serialize()));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    EXPECT_EQ(chain_a.size(), heightBefore)
+        << "Node A accepted a block whose transaction its own Ledger couldn't apply";
+    EXPECT_FALSE(chain_b.has_block(block.hash_))
+        << "Node B received a block that A should never have relayed";
+    EXPECT_FALSE(ledger_a.get_balance(alice.address).has_value())
+        << "Ledger should be untouched -- no balance record should exist for alice";
 }

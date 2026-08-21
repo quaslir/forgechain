@@ -3,11 +3,11 @@
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
 #include "core/ForkResolution.hpp"
+#include "core/Ledger.hpp"
 #include "core/Mempool.hpp"
 #include "core/OrphanPool.hpp"
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
-#include "crypto/Hash.hpp"
 #include "network/GetBlocks.hpp"
 #include "network/Handshake.hpp"
 #include "network/Inventory.hpp"
@@ -24,12 +24,11 @@
 #include <utility>
 #include <vector>
 #include <optional>
-#include <iostream>
 namespace forgechain::network {
 Node::Node(uint16_t listen_port, VersionInfo info, core::Blockchain &blockchain,
-           core::Mempool &mempool, core::OrphanPool& orphan_pool)
+           core::Mempool &mempool, core::OrphanPool& orphan_pool, core::Ledger& ledger)
     : listen_port_(listen_port), info_(info), blockchain_(blockchain),
-      mempool_(mempool), orphan_pool_(orphan_pool) {}
+      mempool_(mempool), orphan_pool_(orphan_pool), ledger_(ledger) {}
 
 bool Node::start() {
   listener_ = listen_on(listen_port_);
@@ -252,7 +251,13 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
     std::lock_guard<std::mutex> lock(chain_mutex_);
     block_status = blockchain_.classify_new_block(*block_container);
     if (block_status == core::BlockValidation::Valid) {
-      blockchain_.add_block(std::move(*block_container));
+        if(!apply_block_to_ledger(*block_container)) {
+            block_status = core::BlockValidation::Invalid;
+        } else {
+                blockchain_.add_block(std::move(*block_container));
+        }
+
+
     }
   }
 
@@ -326,11 +331,6 @@ std::optional<std::vector<crypto::HashBytes>> Node::try_reorg(const core::Block&
     }
     auto reorganize_result = blockchain_.reorganize_to(std::move(*fork_chain));
     if(!reorganize_result.has_value()) return std::nullopt;
-    std::cerr << "[NODE:" << listen_port_ << "] [REORG] switched to heavier branch: "
-              << "discarded " << reorganize_result->size() << " block(s), "
-              << "applied " << new_hashes.size() << " block(s), "
-              << "new tip=" << crypto::to_hex(new_hashes.back()).substr(0, 12) << "..."
-              << std::endl;
 
 for(const auto& block : *reorganize_result) {
    for(const auto& tx : block.transactions_) {
@@ -341,6 +341,22 @@ for(const auto& block : *reorganize_result) {
 
     return new_hashes;
 }
+
+bool Node::apply_block_to_ledger(const core::Block& block) {
+const auto& transactions = block.transactions_;
+
+for(size_t i = 0; i < transactions.size(); i++) {
+if(!ledger_.apply_transaction(transactions[i])) {
+    for(size_t j = i; j > 0; j--) {
+        ledger_.reverse_transaction(transactions[j - 1]);
+    }
+    return false;
+}
+}
+
+return true;
+}
+
 void Node::stop() {
   running_.store(false);
   listener_.close_socket();
