@@ -1,0 +1,69 @@
+services:
+  node1:
+    build: .
+    container_name: forgechain-partition-node1
+    command: ["--port", "9000", "--mine-every", "10"]
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9000"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+      start_period: 3s
+    networks:
+      forgechain-partition-net:
+        ipv4_address: 172.29.0.11
+
+  node2:
+    build: .
+    container_name: forgechain-partition-node2
+    command: ["--port", "9000", "--connect", "172.29.0.11", "9000", "--mine-every", "12"]
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9000"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+      start_period: 3s
+    depends_on:
+      node1:
+        condition: service_healthy
+    networks:
+      forgechain-partition-net:
+        ipv4_address: 172.29.0.12
+
+  node3:
+    build: .
+    container_name: forgechain-partition-node3
+    command: ["--port", "9000", "--mine-every", "11"]
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9000"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+      start_period: 3s
+    networks:
+      forgechain-partition-net:
+        ipv4_address: 172.29.0.13
+
+  node4:
+    build: .
+    container_name: forgechain-partition-node4
+    command: ["--port", "9000", "--connect", "172.29.0.13", "9000", "--mine-every", "13"]
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9000"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+      start_period: 3s
+    depends_on:
+      node3:
+        condition: service_healthy
+    networks:
+      forgechain-partition-net:
+        ipv4_address: 172.29.0.14
+
+networks:
+  forgechain-partition-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
