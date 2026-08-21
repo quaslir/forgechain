@@ -3,6 +3,7 @@
 #include "core/Blockchain.hpp"
 #include "core/Mempool.hpp"
 #include "core/OrphanPool.hpp"
+#include "core/Ledger.hpp"
 #include "crypto/CommonTypes.hpp"
 
 #include <gtest/gtest.h>
@@ -16,7 +17,6 @@
 #include <memory>
 #include <thread>
 #include <vector>
-#include <functional>
 #include <cstddef>
 using namespace forgechain::network;
 using namespace forgechain::core;
@@ -36,9 +36,10 @@ struct TestNode : Node {
     Blockchain chain;
     Mempool mempool;
     OrphanPool orphan_pool;
+    Ledger ledger;
 
     TestNode(uint16_t port, VersionInfo info)
-        : Node(port, info, chain, mempool, orphan_pool) {}
+        : Node(port, info, chain, mempool, orphan_pool, ledger) {}
 };
 
 ::testing::AssertionResult RunWithTimeout(std::chrono::milliseconds timeout,

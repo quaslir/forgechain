@@ -2,6 +2,7 @@
 
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
+#include "core/Ledger.hpp"
 #include "core/Mempool.hpp"
 #include "core/OrphanPool.hpp"
 #include "crypto/CommonTypes.hpp"
@@ -33,7 +34,7 @@ constexpr auto PING_TIMEOUT = std::chrono::seconds(45);
 class Node {
 public:
   Node(uint16_t listen_port, VersionInfo info, core::Blockchain &blockchain,
-       core::Mempool &mempool, core::OrphanPool& orphan_pool);
+       core::Mempool &mempool, core::OrphanPool& orphan_pool, core::Ledger& ledger);
   ~Node();
   bool start();
   void stop();
@@ -59,6 +60,8 @@ private:
   void handle_getblocks(Peer *peer, const crypto::bytes &payload);
   void handle_ping(Peer *peer);
   void handle_pong();
+[[nodiscard]]  bool apply_block_to_ledger(const core::Block& block);
+
   std::optional<std::vector<crypto::HashBytes>> try_reorg(const core::Block& candidate);
   uint16_t listen_port_;
   VersionInfo info_;
@@ -66,6 +69,7 @@ private:
   core::Blockchain &blockchain_;
   core::Mempool &mempool_;
   core::OrphanPool& orphan_pool_;
+  core::Ledger& ledger_;
   VectorPeers peers_;
   std::atomic<bool> running_{false};
   std::thread accept_thread_;

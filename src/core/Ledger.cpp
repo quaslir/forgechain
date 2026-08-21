@@ -24,4 +24,13 @@ bool Ledger::apply_transaction(const Transaction &tx) {
   balances_[tx.recipient_] += tx.amount_;
   return true;
 }
+bool Ledger::reverse_transaction(const Transaction& tx) {
+    if (!balances_.contains(tx.recipient_))
+      return false;
+    if (tx.amount_ > balances_[tx.recipient_])
+      return false;
+    balances_[tx.sender_] += tx.amount_;
+    balances_[tx.recipient_] -= tx.amount_;
+    return true;
+}
 } // namespace forgechain::core

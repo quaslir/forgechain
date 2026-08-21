@@ -1,3 +1,41 @@
+// Hard/verbose demo executable for manually exercising the full P2P stack:
+// initial sync (GETBLOCKS), block/tx propagation (INV/GETDATA/BLOCK/TX),
+// and the PING/PONG heartbeat -- between two real Node objects talking over
+// real TCP sockets on localhost.
+//
+// Built twice as `peer_a` and `peer_b` (same source, see app/CMakeLists.txt)
+// so two instances can run in two separate terminals.
+//
+// Usage:
+//   ./peer_a --port <PORT> [--connect <HOST> <PORT>] [--mine-every <SECONDS>]
+//   ./peer_b --port <PORT> [--connect <HOST> <PORT>] [--mine-every <SECONDS>]
+//
+// Both peers mine by default (every 8s). Pass --mine-every 0 to disable
+// mining on a given instance (pure listener).
+//
+// Example (two terminals, BOTH mining -- the hard/realistic case):
+//   Terminal 1: ./peer_a --port 9000
+//   Terminal 2: ./peer_b --port 9001 --connect 127.0.0.1 9000
+//
+// Because the chain is a simple linear vector (no fork/reorg support -- see
+// Node::is_valid_new_block_unlocked), if both peers mine at nearly the same
+// moment, whichever mined block arrives and is accepted FIRST wins; the
+// other peer's own block gets rejected by the winner (prev_hash_ mismatch)
+// once it arrives. This demo explicitly detects and logs that race instead
+// of hiding it -- watch for [MINE] "... but height did NOT change" lines.
+//
+// Node has no public "mine and broadcast" API (see Node.hpp) -- handle_block
+// and handle_tx only fire in response to an incoming network message. So to
+// actually inject a freshly mined block/tx into the running Node, this demo
+// connects to itself as a bare raw peer (like a third node would) and sends
+// a BLOCK/TX message, exactly like PropagationTest.cpp's RawPeer does.
+//
+// State (chain height, mempool size, peer count) is only observed from the
+// outside via polling -- Node.cpp itself is not touched or modified. That
+// means PING/PONG traffic itself is invisible here (it's handled entirely
+// inside Node); this demo can only infer heartbeat activity indirectly,
+// via peer_count dropping if a peer is ever marked dead.
+
 #include "network/Node.hpp"
 #include "network/Handshake.hpp"
 #include "network/Message.hpp"
@@ -5,6 +43,7 @@
 #include "core/Blockchain.hpp"
 #include "core/Mempool.hpp"
 #include "core/OrphanPool.hpp"
+#include "core/Ledger.hpp"
 #include "core/Block.hpp"
 #include "core/Transaction.hpp"
 #include "consensus/ProofOfWork.hpp"
@@ -141,7 +180,8 @@ int main(int argc, char **argv) {
   Blockchain chain;
   Mempool mempool;
   OrphanPool orphan_pool;
-  Node node(args.port, make_version(0), chain, mempool, orphan_pool);
+  Ledger ledger;
+  Node node(args.port, make_version(0), chain, mempool, orphan_pool, ledger);
 
   log.log("BOOT", "starting Node::start()...");
   if (!node.start()) {
@@ -261,6 +301,7 @@ int main(int argc, char **argv) {
                              " ACCEPTED into own chain, height now " +
                              std::to_string(chain.size()));
       }
+
       Transaction tx =
           make_signed_tx(demo_wallet, "demo-recipient", 10 + tx_counter);
       ++tx_counter;
