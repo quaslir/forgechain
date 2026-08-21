@@ -84,7 +84,7 @@ struct Args {
   std::string connect_host;
   uint16_t connect_port = 0;
   bool should_connect = false;
-  int mine_every_seconds = 8;
+  int mine_every_seconds = 8; // both peers mine by default; 0 disables it
 };
 
 Args parse_args(int argc, char **argv) {
@@ -209,6 +209,9 @@ int main(int argc, char **argv) {
   constexpr uint32_t kDemoDifficulty = 8;
   Wallet demo_wallet = make_wallet();
   log.log("BOOT", "demo wallet address=" + demo_wallet.address);
+  constexpr uint64_t kDemoStartingBalance = 1000000;
+  ledger.set_balance(demo_wallet.address, kDemoStartingBalance);
+  log.log("BOOT", "seeded demo wallet balance=" + std::to_string(kDemoStartingBalance));
   uint64_t tx_counter = 0;
   uint64_t mine_attempts = 0;
   uint64_t mine_races_lost = 0;
@@ -268,16 +271,40 @@ int main(int argc, char **argv) {
       last_mine_time = std::chrono::steady_clock::now();
       ++mine_attempts;
 
+      Transaction tx =
+          make_signed_tx(demo_wallet, "demo-recipient", 10 + tx_counter);
+      ++tx_counter;
+      log.log("MINE", "signed tx amount=" + std::to_string(10 + tx_counter - 1) +
+                           " hash=" + short_hash(tx.compute_hash()));
+
+      InjectorPeer tx_injector;
+      if (tx_injector.connect(args.port, log)) {
+        if (tx_injector.send(MessageType::TX, tx.serialize())) {
+          log.log("MINE", "injected tx into own mempool");
+        } else {
+          log.log("MINE", "FAILED to inject tx (send error)");
+        }
+      }
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
       size_t height_before_mine = chain.size();
       HashBytes prev_hash_used = chain.latest().hash_;
 
+      constexpr size_t kMaxTxsPerBlock = 50;
+      auto txs_for_block = mempool.get_transactions_for_block(kMaxTxsPerBlock);
+      log.log("MINE", "pulled " + std::to_string(txs_for_block.size()) +
+                           " transaction(s) from mempool for this block");
+
       Block mined = mine_block(1, prev_hash_used,
                                 static_cast<uint64_t>(std::time(nullptr)),
-                                kDemoDifficulty, {});
+                                kDemoDifficulty, txs_for_block);
       log.log("MINE", "#" + std::to_string(mine_attempts) +
                            " mined block on top of " +
                            short_hash(prev_hash_used) +
-                           " -> new_hash=" + short_hash(mined.hash_));
+                           " -> new_hash=" + short_hash(mined.hash_) +
+                           " (" + std::to_string(txs_for_block.size()) +
+                           " tx(s))");
 
       InjectorPeer block_injector;
       if (block_injector.connect(args.port, log)) {
@@ -294,27 +321,14 @@ int main(int argc, char **argv) {
         log.log("MINE", "#" + std::to_string(mine_attempts) +
                              " REJECTED: height did NOT change (" +
                              std::to_string(height_before_mine) +
-                             " still). Someone else's block for this height "
-                             "won the race first (prev_hash_ mismatch).");
+                             " still). Either someone else's block won the "
+                             "race first, or our own Ledger rejected one of "
+                             "this block's transactions (see [MEMPOOL]/"
+                             "[CHAIN] lines above).");
       } else {
         log.log("MINE", "#" + std::to_string(mine_attempts) +
                              " ACCEPTED into own chain, height now " +
                              std::to_string(chain.size()));
-      }
-
-      Transaction tx =
-          make_signed_tx(demo_wallet, "demo-recipient", 10 + tx_counter);
-      ++tx_counter;
-      log.log("MINE", "signed tx amount=" + std::to_string(10 + tx_counter - 1) +
-                           " hash=" + short_hash(tx.compute_hash()));
-
-      InjectorPeer tx_injector;
-      if (tx_injector.connect(args.port, log)) {
-        if (tx_injector.send(MessageType::TX, tx.serialize())) {
-          log.log("MINE", "injected tx into own mempool");
-        } else {
-          log.log("MINE", "FAILED to inject tx (send error)");
-        }
       }
     }
 

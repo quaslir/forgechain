@@ -254,6 +254,9 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
         if(!apply_block_to_ledger(*block_container)) {
             block_status = core::BlockValidation::Invalid;
         } else {
+                for(const auto&tx : block_container->transactions_) {
+                    mempool_.remove_transaction(tx);
+                }
                 blockchain_.add_block(std::move(*block_container));
         }
 
