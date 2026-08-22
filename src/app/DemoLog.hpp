@@ -6,7 +6,7 @@
 #include <mutex>
 #include <sstream>
 #include <string>
-
+#include <utility>
 namespace forgechain::demo {
 
 class DemoLog {

@@ -1,4 +1,4 @@
-add_executable(forgechain main.cpp)
+add_executable(forgechain main.cpp Orchestrator.cpp)
 
 target_link_libraries(forgechain PRIVATE
     core

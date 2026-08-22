@@ -36,22 +36,22 @@
 // inside Node); this demo can only infer heartbeat activity indirectly,
 // via peer_count dropping if a peer is ever marked dead.
 
-#include "network/Node.hpp"
-#include "network/Handshake.hpp"
-#include "network/Message.hpp"
-#include "network/TcpSocket.hpp"
+#include "consensus/ProofOfWork.hpp"
+#include "core/Block.hpp"
 #include "core/Blockchain.hpp"
+#include "core/Ledger.hpp"
 #include "core/Mempool.hpp"
 #include "core/OrphanPool.hpp"
-#include "core/Ledger.hpp"
-#include "core/Block.hpp"
 #include "core/Transaction.hpp"
-#include "consensus/ProofOfWork.hpp"
+#include "crypto/Address.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "crypto/Hash.hpp"
 #include "crypto/Keys.hpp"
-#include "crypto/Address.hpp"
 #include "crypto/Signature.hpp"
+#include "network/Handshake.hpp"
+#include "network/Message.hpp"
+#include "network/Node.hpp"
+#include "network/TcpSocket.hpp"
 
 #include "DemoLog.hpp"
 
@@ -105,7 +105,8 @@ Args parse_args(int argc, char **argv) {
 }
 
 VersionInfo make_version(uint64_t height) {
-  return VersionInfo{.protocol_version = 1, .chain_height = height, .timestamp = 0};
+  return VersionInfo{
+      .protocol_version = 1, .chain_height = height, .timestamp = 0};
 }
 
 class InjectorPeer {
@@ -143,7 +144,8 @@ Wallet make_wallet() {
   return Wallet{kp, derive_address(kp.public_key)};
 }
 
-Transaction make_signed_tx(const Wallet &sender, const str &recipient, uint64_t amount) {
+Transaction make_signed_tx(const Wallet &sender, const str &recipient,
+                           uint64_t amount) {
   Transaction tx(sender.address, recipient, amount, sender.keys.public_key);
   tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
   return tx;
@@ -160,9 +162,10 @@ int main(int argc, char **argv) {
 
   Args args = parse_args(argc, argv);
   if (args.port == 0) {
-    std::cerr << "usage: " << argv[0]
-              << " --port <PORT> [--connect <HOST> <PORT>] "
-                 "[--mine-every <SECONDS>] (default mine-every: 8, 0 to disable)\n";
+    std::cerr
+        << "usage: " << argv[0]
+        << " --port <PORT> [--connect <HOST> <PORT>] "
+           "[--mine-every <SECONDS>] (default mine-every: 8, 0 to disable)\n";
     return 1;
   }
 
@@ -170,11 +173,10 @@ int main(int argc, char **argv) {
 
   log.log("BOOT", "==================================================");
   log.log("BOOT", "forgechain P2P demo starting");
-  log.log("BOOT", "port=" + std::to_string(args.port) +
-                   " mine_every=" +
-                   (args.mine_every_seconds > 0
-                        ? std::to_string(args.mine_every_seconds) + "s"
-                        : "DISABLED"));
+  log.log("BOOT", "port=" + std::to_string(args.port) + " mine_every=" +
+                      (args.mine_every_seconds > 0
+                           ? std::to_string(args.mine_every_seconds) + "s"
+                           : "DISABLED"));
   log.log("BOOT", "==================================================");
 
   Blockchain chain;
@@ -188,15 +190,15 @@ int main(int argc, char **argv) {
     log.log("BOOT", "FAILED to start node (port already in use?)");
     return 1;
   }
-  log.log("BOOT", "node listening. genesis height=" +
-                       std::to_string(chain.size()) + " hash=" +
-                       short_hash(chain.latest().hash_));
+  log.log("BOOT",
+          "node listening. genesis height=" + std::to_string(chain.size()) +
+              " hash=" + short_hash(chain.latest().hash_));
 
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   if (args.should_connect) {
     log.log("PEER", "connecting to " + args.connect_host + ":" +
-                          std::to_string(args.connect_port) + "...");
+                        std::to_string(args.connect_port) + "...");
     if (node.connect_to_peer(args.connect_host, args.connect_port)) {
       log.log("PEER", "TCP connect + handshake succeeded");
     } else {
@@ -211,7 +213,8 @@ int main(int argc, char **argv) {
   log.log("BOOT", "demo wallet address=" + demo_wallet.address);
   constexpr uint64_t kDemoStartingBalance = 1000000;
   ledger.set_balance(demo_wallet.address, kDemoStartingBalance);
-  log.log("BOOT", "seeded demo wallet balance=" + std::to_string(kDemoStartingBalance));
+  log.log("BOOT",
+          "seeded demo wallet balance=" + std::to_string(kDemoStartingBalance));
   uint64_t tx_counter = 0;
   uint64_t mine_attempts = 0;
   uint64_t mine_races_lost = 0;
@@ -229,39 +232,39 @@ int main(int argc, char **argv) {
 
     if (peers != last_seen_peer_count) {
       if (peers < last_seen_peer_count) {
-        log.log("PEER", "peer_count DROPPED: " +
-                             std::to_string(last_seen_peer_count) + " -> " +
-                             std::to_string(peers) +
-                             "  (peer likely marked dead by heartbeat or "
-                             "disconnected)");
+        log.log("PEER",
+                "peer_count DROPPED: " + std::to_string(last_seen_peer_count) +
+                    " -> " + std::to_string(peers) +
+                    "  (peer likely marked dead by heartbeat or "
+                    "disconnected)");
       } else {
-        log.log("PEER", "peer_count grew: " +
-                             std::to_string(last_seen_peer_count) + " -> " +
-                             std::to_string(peers));
+        log.log("PEER",
+                "peer_count grew: " + std::to_string(last_seen_peer_count) +
+                    " -> " + std::to_string(peers));
       }
       last_seen_peer_count = peers;
     }
     if (height != last_seen_chain_size) {
-      log.log("CHAIN", "height " + std::to_string(last_seen_chain_size) +
-                            " -> " + std::to_string(height) +
-                            "  latest_hash=" + short_hash(chain.latest().hash_) +
-                            "  prev_hash=" +
-                            short_hash(chain.latest().prev_hash_));
+      log.log("CHAIN",
+              "height " + std::to_string(last_seen_chain_size) + " -> " +
+                  std::to_string(height) +
+                  "  latest_hash=" + short_hash(chain.latest().hash_) +
+                  "  prev_hash=" + short_hash(chain.latest().prev_hash_));
       last_seen_chain_size = height;
     }
     if (mempool_size != last_seen_mempool_size) {
       log.log("MEMPOOL", "size " + std::to_string(last_seen_mempool_size) +
-                              " -> " + std::to_string(mempool_size));
+                             " -> " + std::to_string(mempool_size));
       last_seen_mempool_size = mempool_size;
     }
 
     if (std::chrono::steady_clock::now() - last_status_time >
         std::chrono::seconds(5)) {
       log.log("STATUS", "peers=" + std::to_string(peers) +
-                              " height=" + std::to_string(height) +
-                              " mempool=" + std::to_string(mempool_size) +
-                              " mine_attempts=" + std::to_string(mine_attempts) +
-                              " races_lost=" + std::to_string(mine_races_lost));
+                            " height=" + std::to_string(height) +
+                            " mempool=" + std::to_string(mempool_size) +
+                            " mine_attempts=" + std::to_string(mine_attempts) +
+                            " races_lost=" + std::to_string(mine_races_lost));
       last_status_time = std::chrono::steady_clock::now();
     }
 
@@ -274,8 +277,9 @@ int main(int argc, char **argv) {
       Transaction tx =
           make_signed_tx(demo_wallet, "demo-recipient", 10 + tx_counter);
       ++tx_counter;
-      log.log("MINE", "signed tx amount=" + std::to_string(10 + tx_counter - 1) +
-                           " hash=" + short_hash(tx.compute_hash()));
+      log.log("MINE",
+              "signed tx amount=" + std::to_string(10 + tx_counter - 1) +
+                  " hash=" + short_hash(tx.compute_hash()));
 
       InjectorPeer tx_injector;
       if (tx_injector.connect(args.port, log)) {
@@ -294,17 +298,16 @@ int main(int argc, char **argv) {
       constexpr size_t kMaxTxsPerBlock = 50;
       auto txs_for_block = mempool.get_transactions_for_block(kMaxTxsPerBlock);
       log.log("MINE", "pulled " + std::to_string(txs_for_block.size()) +
-                           " transaction(s) from mempool for this block");
+                          " transaction(s) from mempool for this block");
 
       Block mined = mine_block(1, prev_hash_used,
-                                static_cast<uint64_t>(std::time(nullptr)),
-                                kDemoDifficulty, txs_for_block);
+                               static_cast<uint64_t>(std::time(nullptr)),
+                               kDemoDifficulty, txs_for_block);
       log.log("MINE", "#" + std::to_string(mine_attempts) +
-                           " mined block on top of " +
-                           short_hash(prev_hash_used) +
-                           " -> new_hash=" + short_hash(mined.hash_) +
-                           " (" + std::to_string(txs_for_block.size()) +
-                           " tx(s))");
+                          " mined block on top of " +
+                          short_hash(prev_hash_used) +
+                          " -> new_hash=" + short_hash(mined.hash_) + " (" +
+                          std::to_string(txs_for_block.size()) + " tx(s))");
 
       InjectorPeer block_injector;
       if (block_injector.connect(args.port, log)) {
@@ -319,16 +322,16 @@ int main(int argc, char **argv) {
       if (chain.size() == height_before_mine) {
         ++mine_races_lost;
         log.log("MINE", "#" + std::to_string(mine_attempts) +
-                             " REJECTED: height did NOT change (" +
-                             std::to_string(height_before_mine) +
-                             " still). Either someone else's block won the "
-                             "race first, or our own Ledger rejected one of "
-                             "this block's transactions (see [MEMPOOL]/"
-                             "[CHAIN] lines above).");
+                            " REJECTED: height did NOT change (" +
+                            std::to_string(height_before_mine) +
+                            " still). Either someone else's block won the "
+                            "race first, or our own Ledger rejected one of "
+                            "this block's transactions (see [MEMPOOL]/"
+                            "[CHAIN] lines above).");
       } else {
         log.log("MINE", "#" + std::to_string(mine_attempts) +
-                             " ACCEPTED into own chain, height now " +
-                             std::to_string(chain.size()));
+                            " ACCEPTED into own chain, height now " +
+                            std::to_string(chain.size()));
       }
     }
 
@@ -337,8 +340,8 @@ int main(int argc, char **argv) {
 
   log.log("SHUTDOWN", "SIGINT received, stopping node...");
   node.stop();
-  log.log("SHUTDOWN", "stopped cleanly. final height=" +
-                            std::to_string(chain.size()) +
-                            " final mempool=" + std::to_string(mempool.size()));
+  log.log("SHUTDOWN",
+          "stopped cleanly. final height=" + std::to_string(chain.size()) +
+              " final mempool=" + std::to_string(mempool.size()));
   return 0;
 }

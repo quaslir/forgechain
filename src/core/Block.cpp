@@ -13,7 +13,8 @@ namespace forgechain::core {
 Block::Block(uint32_t version, HashBytes prev_hash, uint64_t timestamp,
              std::vector<Transaction> transactions)
     : version_(version), prev_hash_(prev_hash), timestamp_(timestamp),
-      difficulty_(0), nonce_(0), cumulative_work_(0), transactions_(std::move(transactions)){
+      difficulty_(0), nonce_(0), cumulative_work_(0),
+      transactions_(std::move(transactions)) {
   crypto::bytes tx_out;
   for (const auto &tx : transactions_) {
     bytes tx_serialized = tx.serialize();

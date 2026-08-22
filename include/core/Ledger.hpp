@@ -12,7 +12,7 @@ public:
   get_balance(const crypto::str &address) const;
 
   bool apply_transaction(const Transaction &tx);
-  bool reverse_transaction(const Transaction& tx);
+  bool reverse_transaction(const Transaction &tx);
 
 private:
   std::unordered_map<str, uint64_t> balances_;
