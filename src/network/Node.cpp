@@ -18,15 +18,16 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <unordered_set>
+#include <optional>
 #include <sys/socket.h>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <optional>
 namespace forgechain::network {
 Node::Node(uint16_t listen_port, VersionInfo info, core::Blockchain &blockchain,
-           core::Mempool &mempool, core::OrphanPool& orphan_pool, core::Ledger& ledger)
+           core::Mempool &mempool, core::OrphanPool &orphan_pool,
+           core::Ledger &ledger)
     : listen_port_(listen_port), info_(info), blockchain_(blockchain),
       mempool_(mempool), orphan_pool_(orphan_pool), ledger_(ledger) {}
 
@@ -251,16 +252,14 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
     std::lock_guard<std::mutex> lock(chain_mutex_);
     block_status = blockchain_.classify_new_block(*block_container);
     if (block_status == core::BlockValidation::Valid) {
-        if(!apply_block_to_ledger(*block_container)) {
-            block_status = core::BlockValidation::Invalid;
-        } else {
-                for(const auto&tx : block_container->transactions_) {
-                    mempool_.remove_transaction(tx);
-                }
-                blockchain_.add_block(std::move(*block_container));
+      if (!apply_block_to_ledger(*block_container)) {
+        block_status = core::BlockValidation::Invalid;
+      } else {
+        for (const auto &tx : block_container->transactions_) {
+          mempool_.remove_transaction(tx);
         }
-
-
+        blockchain_.add_block(std::move(*block_container));
+      }
     }
   }
 
@@ -269,24 +268,23 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
     broadcast_inv(peer, InventoryItemType::BLOCK, hash);
     break;
   case core::BlockValidation::ForkCandidate: {
-      core::Block fork_candidate_block{*block_container};
+    core::Block fork_candidate_block{*block_container};
 
-      std::unique_lock<std::mutex> chain_lock(chain_mutex_);
-      std::unique_lock<std::mutex> orphan_lock(orphan_mutex_);
+    std::unique_lock<std::mutex> chain_lock(chain_mutex_);
+    std::unique_lock<std::mutex> orphan_lock(orphan_mutex_);
 
-      orphan_pool_.add_orphan(std::move(*block_container));
-      auto reorg_hashes = try_reorg(fork_candidate_block);
-      chain_lock.unlock();
-      orphan_lock.unlock();
+    orphan_pool_.add_orphan(std::move(*block_container));
+    auto reorg_hashes = try_reorg(fork_candidate_block);
+    chain_lock.unlock();
+    orphan_lock.unlock();
 
-      if(reorg_hashes.has_value()) {
-          for(const auto& reorg_hash : *reorg_hashes) {
-              broadcast_inv(peer, InventoryItemType::BLOCK, reorg_hash);
-          }
+    if (reorg_hashes.has_value()) {
+      for (const auto &reorg_hash : *reorg_hashes) {
+        broadcast_inv(peer, InventoryItemType::BLOCK, reorg_hash);
       }
-          break;
+    }
+    break;
   }
-
 
   case core::BlockValidation::Invalid:
     break;
@@ -319,64 +317,98 @@ void Node::handle_getblocks(Peer *peer, const crypto::bytes &payload) {
 
 void Node::handle_ping(Peer *peer) { send_msg(peer, MessageType::PONG, {}); }
 void Node::handle_pong() {}
-std::optional<std::vector<crypto::HashBytes>> Node::try_reorg(const core::Block& candidate) {
-    auto fork_chain =  core::build_fork_chain(blockchain_, orphan_pool_, candidate);
+std::optional<std::vector<crypto::HashBytes>>
+Node::try_reorg(const core::Block &candidate) {
+  auto fork_chain =
+      core::build_fork_chain(blockchain_, orphan_pool_, candidate);
 
-    if(!fork_chain.has_value()) return std::nullopt;
-    if(!core::is_fork_heavier(blockchain_, *fork_chain)) return std::nullopt;
-    std::vector<crypto::HashBytes> new_hashes;
-    std::unordered_set<core::HashBytes, crypto::HashBytesHasher> new_branch_hashes;
-    std::vector<core::Transaction> new_branch_txs;
-    for(const auto& block : fork_chain->blocks) {
-        new_hashes.push_back(block.hash_);
-        for(const auto& tx: block.transactions_) {
-            new_branch_hashes.insert(tx.compute_hash());
-            new_branch_txs.push_back(tx);
-        }
+  if (!fork_chain.has_value())
+    return std::nullopt;
+  if (!core::is_fork_heavier(blockchain_, *fork_chain))
+    return std::nullopt;
+  std::vector<crypto::HashBytes> new_hashes;
+  std::unordered_set<core::HashBytes, crypto::HashBytesHasher>
+      new_branch_hashes;
+  std::vector<core::Transaction> new_branch_txs;
+  for (const auto &block : fork_chain->blocks) {
+    new_hashes.push_back(block.hash_);
+    for (const auto &tx : block.transactions_) {
+      new_branch_hashes.insert(tx.compute_hash());
+      new_branch_txs.push_back(tx);
     }
+  }
 
-    auto reorganize_result = blockchain_.reorganize_to(std::move(*fork_chain));
-    if(!reorganize_result.has_value()) return std::nullopt;
+  auto reorganize_result = blockchain_.reorganize_to(std::move(*fork_chain));
+  if (!reorganize_result.has_value())
+    return std::nullopt;
 
-std::unordered_set<core::HashBytes, crypto::HashBytesHasher> discarded_hashes;
+  std::unordered_set<core::HashBytes, crypto::HashBytesHasher> discarded_hashes;
 
-for(const auto& block : *reorganize_result) {
-    for(const auto& tx : block.transactions_) {
-        discarded_hashes.insert(tx.compute_hash());
+  for (const auto &block : *reorganize_result) {
+    for (const auto &tx : block.transactions_) {
+      discarded_hashes.insert(tx.compute_hash());
     }
-}
+  }
 
-for(auto it = reorganize_result->rbegin(); it != reorganize_result->rend(); it++) {
-    for(auto tx = it->transactions_.rbegin(); tx != it->transactions_.rend(); tx++) {
-                if(new_branch_hashes.contains(tx->compute_hash())) continue;
-        ledger_.reverse_transaction(*tx);
-        mempool_.add_transaction(*tx, tx->sender_public_key_);
+  for (auto it = reorganize_result->rbegin(); it != reorganize_result->rend();
+       it++) {
+    for (auto tx = it->transactions_.rbegin(); tx != it->transactions_.rend();
+         tx++) {
+      if (new_branch_hashes.contains(tx->compute_hash()))
+        continue;
+      ledger_.reverse_transaction(*tx);
+      mempool_.add_transaction(*tx, tx->sender_public_key_);
     }
-}
+  }
 
-for(const auto& tx: new_branch_txs) {
-    if(discarded_hashes.contains(tx.compute_hash())) continue;
+  for (const auto &tx : new_branch_txs) {
+    if (discarded_hashes.contains(tx.compute_hash()))
+      continue;
     ledger_.apply_transaction(tx);
+  }
+
+  return new_hashes;
 }
 
-    return new_hashes;
-}
+bool Node::apply_block_to_ledger(const core::Block &block) {
+  const auto &transactions = block.transactions_;
 
-bool Node::apply_block_to_ledger(const core::Block& block) {
-const auto& transactions = block.transactions_;
-
-for(size_t i = 0; i < transactions.size(); i++) {
-if(!ledger_.apply_transaction(transactions[i])) {
-    for(size_t j = i; j > 0; j--) {
+  for (size_t i = 0; i < transactions.size(); i++) {
+    if (!ledger_.apply_transaction(transactions[i])) {
+      for (size_t j = i; j > 0; j--) {
         ledger_.reverse_transaction(transactions[j - 1]);
+      }
+      return false;
     }
-    return false;
-}
+  }
+
+  return true;
 }
 
-return true;
+void Node::submit_block(const core::Block &block) {
+  handle_block(nullptr, block.serialize());
+}
+void Node::submit_transaction(const core::Transaction &tx) {
+  handle_tx(nullptr, tx.serialize());
 }
 
+size_t Node::chain_height() const {
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  return blockchain_.size();
+}
+std::optional<uint64_t> Node::get_balance(const crypto::str &address) const {
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  return ledger_.get_balance(address);
+}
+crypto::HashBytes Node::latest_hash() const {
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  return blockchain_.latest().hash_;
+}
+std::vector<core::Transaction>
+Node::transactions_for_block(size_t limit) const {
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  return mempool_.get_transactions_for_block(limit);
+}
 void Node::stop() {
   running_.store(false);
   listener_.close_socket();

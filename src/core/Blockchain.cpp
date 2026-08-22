@@ -1,12 +1,12 @@
 #include "core/Blockchain.hpp"
 #include "core/Block.hpp"
+#include "core/ForkResolution.hpp"
 #include "crypto/CommonTypes.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
-#include "core/ForkResolution.hpp"
 #include <vector>
 namespace forgechain::core {
 using forgechain::core::Block;
@@ -39,14 +39,15 @@ std::optional<Block> Blockchain::find(const crypto::HashBytes &hash) const {
   }
   return std::nullopt;
 }
-std::optional<size_t> Blockchain::find_height(const crypto::HashBytes& hash) const {
-    for(size_t height = 0; height < blocks_.size(); height++) {
-        if(blocks_[height].hash_ == hash) {
-            return height;
-        }
+std::optional<size_t>
+Blockchain::find_height(const crypto::HashBytes &hash) const {
+  for (size_t height = 0; height < blocks_.size(); height++) {
+    if (blocks_[height].hash_ == hash) {
+      return height;
     }
+  }
 
-    return std::nullopt;
+  return std::nullopt;
 }
 
 const Block &Blockchain::at(size_t height) const { return blocks_.at(height); }
@@ -83,14 +84,17 @@ BlockValidation Blockchain::classify_new_block(const core::Block &block) const {
 
   return BlockValidation::Valid;
 }
-std::optional<std::vector<Block>> Blockchain::reorganize_to(ForkChain&& fork) {
-   auto height = find_height(fork.common_ancestor.hash_);
-   if(!height.has_value()) return std::nullopt;
-std::vector<Block> discarded(blocks_.begin() + static_cast<long>(*height) + 1, blocks_.end());
-blocks_.erase(blocks_.begin() + static_cast<long>(*height) + 1, blocks_.end());
-for(auto&& block : fork.blocks) {
+std::optional<std::vector<Block>> Blockchain::reorganize_to(ForkChain &&fork) {
+  auto height = find_height(fork.common_ancestor.hash_);
+  if (!height.has_value())
+    return std::nullopt;
+  std::vector<Block> discarded(blocks_.begin() + static_cast<long>(*height) + 1,
+                               blocks_.end());
+  blocks_.erase(blocks_.begin() + static_cast<long>(*height) + 1,
+                blocks_.end());
+  for (auto &&block : fork.blocks) {
     add_block(std::move(block));
-}
-return discarded;
+  }
+  return discarded;
 }
 } // namespace forgechain::core
