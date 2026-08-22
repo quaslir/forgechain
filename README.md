@@ -20,9 +20,9 @@ the network isn't perfect (latency, partitions, malicious peers).
 - [x] Block structure & hash-linked chain validation
 - [x] ECDSA transaction signing & verification
 - [x] Proof-of-Work mining with difficulty retargeting
-- [ ] P2P networking (handshake, block/tx propagation, gossip)
-- [ ] Multi-node synchronization & fork resolution (heaviest chain rule)
-- [ ] Mempool for pending transactions
+- [x] P2P networking (handshake, block/tx propagation, gossip)
+- [x] Multi-node synchronization & fork resolution (heaviest chain rule)
+- [x] Mempool for pending transactions
 
 ## Status
 
