@@ -29,11 +29,19 @@ bool Orchestrator::start() {
   if (config_.mine_every_seconds > 0) {
     mining_thread_ = std::thread(&Orchestrator::mining_loop, this);
   }
-  if (config_.connect_host.has_value()) {
-    if (!node_.connect_to_peer(*config_.connect_host, config_.connect_port)) {
-      log_.log("PEER", "FAILED to connect (handshake or TCP failure) -- "
-                       "continuing as listener");
+  bool at_least_one_peer_connected{false};
+  for (const auto &address : config_.addresses) {
+    if (node_.connect_to_peer(address.host, address.port)) {
+      at_least_one_peer_connected = true;
+    } else {
+      log_.log("PEER", "FAILED to connect to " + address.host + ":" +
+                           std::to_string(address.port));
     }
+  }
+  if (!at_least_one_peer_connected) {
+    log_.log(
+        "PEER",
+        "FAILED to connect to any configured peer -- continuing as listener");
   }
 
   return true;
@@ -65,9 +73,13 @@ void Orchestrator::mining_loop() {
 }
 
 void Orchestrator::run_command_loop() {
-  crypto::str buffer{};
+  for (;;) {
 
-  while (std::getline(std::cin, buffer)) {
+    log_.prompt(">>> ");
+    crypto::str buffer{};
+    if (!std::getline(std::cin, buffer)) {
+      break;
+    }
     std::istringstream iss(buffer);
     crypto::str command{};
     iss >> command;
@@ -89,6 +101,8 @@ void Orchestrator::run_command_loop() {
 
     else if (command == "quit" || command == "exit") {
       break;
+    } else {
+      std::cout << "unknown command" << std::endl;
     }
   }
 }
