@@ -23,7 +23,7 @@
 #include <memory>
 #include <thread>
 #include <vector>
-#include <cstddef>
+
 using namespace forgechain::network;
 using namespace forgechain::core;
 using namespace forgechain::consensus;
@@ -280,6 +280,7 @@ TEST(Propagation, BlockWithTamperedHashIsNeitherStoredNorRelayed) {
 
     constexpr uint32_t kTestDifficulty = 8;
     Block mined = mine_block(1, chain_a.latest().hash_, 1700000000, kTestDifficulty, {});
+
     Block tampered = mined;
     tampered.timestamp_ = mined.timestamp_ + 12345;
     ASSERT_NE(tampered.compute_hash(), tampered.hash_)
@@ -376,6 +377,7 @@ TEST(Propagation, ReorgReturnsDiscardedTransactionToMempool) {
     HashBytes genesisHash = chain_a.latest().hash_;
 
     Wallet alice = make_wallet();
+
     ledger_a.set_balance(alice.address, 1000);
 
     Transaction orphanedTx = make_signed_tx(alice, "bob-address", 100);
@@ -498,4 +500,82 @@ TEST(Propagation, BlockWithUnaffordableTransactionIsRejectedNotJustSkipped) {
         << "Node B received a block that A should never have relayed";
     EXPECT_FALSE(ledger_a.get_balance(alice.address).has_value())
         << "Ledger should be untouched -- no balance record should exist for alice";
+}
+
+TEST(Propagation, LedgerReflectsWinningBranchNotLosingBranchAfterReorg) {
+    uint16_t port_a = next_test_port();
+    uint16_t port_b = next_test_port();
+
+    Blockchain chain_a;
+    Mempool mempool_a;
+    OrphanPool orphan_pool_a;
+    Ledger ledger_a;
+    Node node_a(port_a, make_version(), chain_a, mempool_a, orphan_pool_a, ledger_a);
+    ASSERT_TRUE(node_a.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    Blockchain chain_b;
+    Mempool mempool_b;
+    OrphanPool orphan_pool_b;
+    Ledger ledger_b;
+    Node node_b(port_b, make_version(), chain_b, mempool_b, orphan_pool_b, ledger_b);
+    ASSERT_TRUE(node_b.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    ASSERT_TRUE(node_b.connect_to_peer("127.0.0.1", port_a));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
+
+    RawPeer source;
+    ASSERT_TRUE(source.connect(port_a, make_version()));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
+
+    HashBytes genesisHash = chain_a.latest().hash_;
+
+    Wallet alice = make_wallet();
+    ledger_a.set_balance(alice.address, 1000);
+    ledger_b.set_balance(alice.address, 1000);
+
+    Transaction txToBob = make_signed_tx(alice, "bob-address", 300);
+    constexpr uint32_t kWeakDifficulty = 6;
+    Block weakBlock = mine_block(1, genesisHash, 1700000000, kWeakDifficulty, {txToBob});
+    ASSERT_TRUE(source.send(MessageType::BLOCK, weakBlock.serialize()));
+    ASSERT_TRUE(WaitUntil([&] { return chain_a.has_block(weakBlock.hash_); }, std::chrono::seconds(2)));
+    ASSERT_TRUE(WaitUntil([&] {
+        auto b = ledger_a.get_balance(alice.address);
+        return b.has_value() && *b == 700u;
+    }, std::chrono::seconds(2))) << "Node A's ledger did not reflect the losing branch's tx before reorg";
+
+    Transaction txToCarol = make_signed_tx(alice, "carol-address", 500);
+    constexpr uint32_t kHeavyDifficulty = 12;
+    Block heavyBlock = mine_block(1, genesisHash, 1700000001, kHeavyDifficulty, {txToCarol});
+    ASSERT_NE(heavyBlock.hash_, weakBlock.hash_);
+    ASSERT_TRUE(source.send(MessageType::BLOCK, heavyBlock.serialize()));
+
+    ASSERT_TRUE(WaitUntil([&] { return chain_a.latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
+        << "Node A never reorganized onto the heavier fork";
+
+    Ledger groundTruth;
+    groundTruth.set_balance(alice.address, 1000);
+    ASSERT_TRUE(groundTruth.apply_transaction(txToCarol));
+
+    ASSERT_TRUE(WaitUntil([&] {
+        auto b = ledger_a.get_balance(alice.address);
+        return b.has_value() && *b == *groundTruth.get_balance(alice.address);
+    }, std::chrono::seconds(2))) << "Node A's ledger alice balance does not match winning-branch-only ground truth";
+
+    auto aliceBalance = ledger_a.get_balance(alice.address);
+    auto bobBalance = ledger_a.get_balance("bob-address");
+    auto carolBalance = ledger_a.get_balance("carol-address");
+
+    ASSERT_TRUE(aliceBalance.has_value());
+    EXPECT_EQ(*aliceBalance, *groundTruth.get_balance(alice.address));
+    EXPECT_EQ(*aliceBalance, 500u);
+
+    ASSERT_TRUE(bobBalance.has_value())
+        << "Node A's ledger still shows a balance for bob-address, but that "
+           "payment was only in the losing (discarded) branch";
+
+    ASSERT_TRUE(carolBalance.has_value());
+    EXPECT_EQ(*carolBalance, *groundTruth.get_balance("carol-address"));
+    EXPECT_EQ(*carolBalance, 500u);
 }
