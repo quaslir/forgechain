@@ -9,6 +9,7 @@
 #include <thread>
 #include <cstdint>
 #include <stdexcept>
+#include <vector>
 using namespace forgechain::network;
 
 namespace {
