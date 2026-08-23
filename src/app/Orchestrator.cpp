@@ -98,6 +98,9 @@ void Orchestrator::run_command_loop() {
     else if (command == "peers") {
       handle_peers_command();
     }
+    else if(command == "setbalance") {
+        handle_set_balance_command(iss);
+    }
 
     else if (command == "quit" || command == "exit") {
       break;
@@ -122,7 +125,24 @@ void Orchestrator::handle_height_command() {
 void Orchestrator::handle_peers_command() {
   std::cout << node_.peer_count() << std::endl;
 }
+void Orchestrator::handle_set_balance_command(std::istringstream& iss) {
+    crypto::str address{};
+    iss >> address;
+    uint64_t amount{0};
+    if (address.empty() || !(iss >> amount)) {
+        std::cout << "usage: setbalance <address> <amount>" << std::endl;
+        return;
+    }
 
+    if(address.empty() || amount == 0) {
+        std::cout << "usage: setbalance <address> <amount>" << std::endl;
+        return;
+    }
+
+    std::lock_guard<std::mutex> state_lock(state_mutex_);
+    node_.set_balance(address, amount);
+    std::cout << "ok" << std::endl;
+}
 void Orchestrator::stop() {
   running_.store(false);
   if (mining_thread_.joinable()) {
