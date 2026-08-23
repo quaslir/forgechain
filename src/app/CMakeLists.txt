@@ -12,6 +12,20 @@ if(ENABLE_ASAN)
     target_link_libraries(forgechain PRIVATE project_sanitizers)
 endif()
 
+add_executable(wallet wallet_main.cpp Wallet.cpp)
+
+target_link_libraries(wallet PRIVATE
+    core
+    crypto
+    consensus
+    network
+    project_warnings
+)
+
+if(ENABLE_ASAN)
+    target_link_libraries(wallet PRIVATE project_sanitizers)
+endif()
+
 add_executable(peer_a peer_node_demo.cpp)
 add_executable(peer_b peer_node_demo.cpp)
 

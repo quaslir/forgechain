@@ -17,7 +17,6 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
-
 namespace {
 forgechain::app::Orchestrator *g_orchestrator{nullptr};
 
