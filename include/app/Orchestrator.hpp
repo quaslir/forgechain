@@ -7,23 +7,28 @@
 #include "crypto/CommonTypes.hpp"
 #include "crypto/Keys.hpp"
 #include "network/Node.hpp"
+#include "network/PeerAddress.hpp"
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <optional>
 #include <thread>
+#include <vector>
 namespace forgechain::app {
 
 struct OrchestratorConfig {
-  uint16_t listen_port{0};
-  std::optional<crypto::str> connect_host;
-  uint16_t connect_port{0};
+  struct Host {
+    crypto::str connect_host;
+    uint16_t connect_port{0};
+  };
+  uint16_t listen_port{8000};
+  std::vector<network::PeerAddress> addresses;
   // 0 disables mining entirely (pure listener node).
-  int mine_every_seconds = 8;
+  int mine_every_seconds = 0;
   static constexpr uint32_t mine_difficulty = 15;
   static constexpr size_t kMaxTxsPerBlock = 50;
-  uint64_t demo_wallet_starting_balance = 1'000'000;
+  static constexpr uint64_t demo_wallet_starting_balance = 1'000'000;
   crypto::str node_name = "NODE";
 };
 class Orchestrator {

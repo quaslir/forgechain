@@ -47,4 +47,9 @@ load_bootstrap_peers(const crypto::str &path) {
 
   return peer_addresses;
 }
+
+void create_bootstrap_file(const crypto::str &path) {
+  std::ofstream file(path);
+  file << "# forgechain bootstrap peers, one per line: host:port\n";
+}
 } // namespace forgechain::network

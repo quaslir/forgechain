@@ -162,6 +162,10 @@ bool Node::accept_one_peer() {
 }
 
 bool Node::connect_to_peer(const crypto::str &host, uint16_t port) {
+  if (port == listen_port_ &&
+      (host == "127.0.0.1" || host == "localhost" || host == "0.0.0.0")) {
+    return false;
+  }
   TcpSocket socket = connect_to(host, port);
 
   return register_new_peer(std::move(socket));
