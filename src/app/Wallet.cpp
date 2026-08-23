@@ -25,8 +25,8 @@ Wallet::Wallet(const crypto::str &path) {
   address_ = crypto::derive_address(keys_.public_key);
 }
 bool Wallet::load_from_file(std::ifstream &file) {
-  auto read_and_check = [](std::ifstream &file, crypto::str &buffer) -> bool {
-    file >> buffer;
+  auto read_and_check = [](std::ifstream &file_, crypto::str &buffer) -> bool {
+    file_ >> buffer;
     return !buffer.empty();
   };
   crypto::str buffer{};
