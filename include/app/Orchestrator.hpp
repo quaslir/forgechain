@@ -22,7 +22,7 @@ struct OrchestratorConfig {
     crypto::str connect_host;
     uint16_t connect_port{0};
   };
-  uint16_t listen_port{0};
+  uint16_t listen_port{8000};
   std::vector<network::PeerAddress> addresses;
   // 0 disables mining entirely (pure listener node).
   int mine_every_seconds = 0;
