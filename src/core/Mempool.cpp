@@ -10,6 +10,8 @@
 namespace forgechain::core {
 bool Mempool::add_transaction(const Transaction &tx,
                               const crypto::bytes &sender_public_key) {
+  if (tx.sender_ == kCoinbaseSender)
+    return false;
   if (crypto::derive_address(sender_public_key) != tx.sender_)
     return false;
   if (!crypto::verify(tx.serialize_for_signing(), tx.signature_,

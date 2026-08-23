@@ -6,6 +6,7 @@ namespace forgechain::core {
 using forgechain::crypto::bytes;
 using forgechain::crypto::str;
 
+inline constexpr const char *kCoinbaseSender = "COINBASE";
 struct Transaction {
 
   str sender_;
