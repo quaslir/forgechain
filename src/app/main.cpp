@@ -17,10 +17,12 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <atomic>
 namespace {
 forgechain::app::Orchestrator *g_orchestrator{nullptr};
-
+std::atomic<bool> g_shutting_down{false};
 void handle_sigint(int) {
+    if(g_shutting_down.exchange(true)) return;
   if (g_orchestrator) {
     g_orchestrator->stop();
   }

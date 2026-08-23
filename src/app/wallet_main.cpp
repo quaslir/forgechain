@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <exception>
 #include <span>
+#include <sstream>
 #include <string_view>
 #include <stdexcept>
 #include "network/PeerAddress.hpp"
@@ -20,18 +21,20 @@ struct Config {
     crypto::str keyfile_path;
 };
 
+auto parse_number = [](std::string_view str_number) -> std::optional<int> {
+  int number{0};
+
+  auto result = std::from_chars(
+      str_number.data(), str_number.data() + str_number.size(), number);
+  if (result.ec != std::errc{}) {
+    return std::nullopt;
+  }
+
+  return number;
+};
+
 Config parse_args(std::span<char *> argv) {
-    auto parse_number = [](std::string_view str_number) -> std::optional<int> {
-      int number{0};
 
-      auto result = std::from_chars(
-          str_number.data(), str_number.data() + str_number.size(), number);
-      if (result.ec != std::errc{}) {
-        return std::nullopt;
-      }
-
-      return number;
-    };
     Config config;
     for(size_t i = 1; i < argv.size(); i++) {
         std::string_view  view{argv[i]};
@@ -84,4 +87,47 @@ try {
     return 2;
 }
 std::cout << "Wallet address: " << wallet->address() << std::endl;
+
+
+    for(;;) {
+    crypto::str buffer{};
+    std::cout << ">>> ";
+    if(!std::getline(std::cin, buffer)) {
+        break;
+    }
+    std::istringstream iss(buffer);
+    crypto::str command{};
+    iss >> command;
+    if(command.empty()) continue;
+
+    if(command == "exit" || command == "quit") {
+        break;
+    }
+
+    if(command == "send") {
+        crypto::str recipient{}, amount_str{};
+        iss >> recipient >> amount_str;
+
+        if(recipient.empty() || amount_str.empty()) {
+            std::cerr << "usage: send <address> <amount>" << std::endl;
+            continue;
+        }
+        auto amount = parse_number(amount_str);
+        if(!amount.has_value()) {
+            std::cerr << "invalid amount: " << amount_str << std::endl;
+            continue;
+        }
+
+        bool ok = wallet->send(recipient, static_cast<uint64_t>(*amount), config.address.host, config.address.port);
+
+        if(ok) {
+            std::cout << "sent" << std::endl;
+        } else {
+            std::cerr << "failed to send (node unreachable?)"  << std::endl;
+        }
+
+    } else {
+        std::cerr << "unknown command: " << command << std::endl;
+    }
+}
 }

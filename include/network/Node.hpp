@@ -53,6 +53,7 @@ public:
   [[nodiscard]] crypto::HashBytes latest_hash() const;
   [[nodiscard]] std::vector<core::Transaction>
   transactions_for_block(size_t limit) const;
+  void set_balance(const crypto::str& address, uint64_t amount);
 
 private:
   void peer_loop(Peer *peer);
