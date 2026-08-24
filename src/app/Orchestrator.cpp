@@ -2,6 +2,7 @@
 #include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
+#include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "network/Handshake.hpp"
 #include "network/Node.hpp"
@@ -65,6 +66,14 @@ void Orchestrator::mining_loop() {
     size_t prev_height = node_.chain_height();
     crypto::HashBytes prev_hash = node_.latest_hash();
     auto txs_for_block = node_.transactions_for_block(config_.kMaxTxsPerBlock);
+
+    if (!config_.reward_address.empty()) {
+      core::Transaction coinbase{core::kCoinbaseSender, config_.reward_address,
+                                 OrchestratorConfig::mining_reward,
+                                 crypto::bytes{}};
+      txs_for_block.insert(txs_for_block.begin(), coinbase);
+    }
+
     core::Block mined = consensus::mine_block(
         1, prev_hash, static_cast<uint64_t>(std::time(nullptr)),
         config_.mine_difficulty, txs_for_block);
@@ -106,6 +115,9 @@ void Orchestrator::run_command_loop() {
     else if (command == "peers") {
       handle_peers_command();
     }
+    else if(command == "setbalance") {
+        handle_set_balance_command(iss);
+    }
 
     else if (command == "quit" || command == "exit") {
       break;
@@ -130,7 +142,24 @@ void Orchestrator::handle_height_command() {
 void Orchestrator::handle_peers_command() {
   std::cout << node_.peer_count() << std::endl;
 }
+void Orchestrator::handle_set_balance_command(std::istringstream& iss) {
+    crypto::str address{};
+    iss >> address;
+    uint64_t amount{0};
+    if (address.empty() || !(iss >> amount)) {
+        std::cout << "usage: setbalance <address> <amount>" << std::endl;
+        return;
+    }
 
+    if(address.empty() || amount == 0) {
+        std::cout << "usage: setbalance <address> <amount>" << std::endl;
+        return;
+    }
+
+    std::lock_guard<std::mutex> state_lock(state_mutex_);
+    node_.set_balance(address, amount);
+    std::cout << "ok" << std::endl;
+}
 void Orchestrator::stop() {
   running_.store(false);
   if (mining_thread_.joinable()) {

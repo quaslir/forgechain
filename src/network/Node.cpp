@@ -411,7 +411,23 @@ crypto::HashBytes Node::latest_hash() const {
 std::vector<core::Transaction>
 Node::transactions_for_block(size_t limit) const {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
-  return mempool_.get_transactions_for_block(limit);
+
+  auto candidates = mempool_.get_transactions_for_block(limit);
+
+  core::Ledger simulated{ledger_};
+  std::vector<core::Transaction> valid;
+
+  for (const auto &tx : candidates) {
+    if (simulated.apply_transaction(tx)) {
+      valid.push_back(tx);
+    }
+  }
+
+  return valid;
+}
+void Node::set_balance(const crypto::str& address, uint64_t amount) {
+    std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+    ledger_.set_balance(address, amount);
 }
 void Node::stop() {
   running_.store(false);

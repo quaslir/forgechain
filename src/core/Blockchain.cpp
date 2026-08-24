@@ -1,6 +1,7 @@
 #include "core/Blockchain.hpp"
 #include "core/Block.hpp"
 #include "core/ForkResolution.hpp"
+#include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
 #include <algorithm>
 #include <cstddef>
@@ -77,7 +78,11 @@ BlockValidation Blockchain::classify_new_block(const core::Block &block) const {
   if (block.hash_ != block.compute_hash()) {
     return BlockValidation::Invalid;
   }
-
+  for (size_t i = 0; i < block.transactions_.size(); i++) {
+    if (block.transactions_[i].sender_ == kCoinbaseSender && i != 0) {
+      return BlockValidation::Invalid;
+    }
+  }
   if (block.prev_hash_ != latest().hash_) {
     return BlockValidation::ForkCandidate;
   }
