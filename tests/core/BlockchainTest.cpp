@@ -7,6 +7,7 @@
 #include "crypto/CommonTypes.hpp"
 #include "core/ForkResolution.hpp"
 #include <utility>
+#include "core/Transaction.hpp"
 using namespace forgechain::core;
 using forgechain::crypto::HashBytes;
 
@@ -412,4 +413,69 @@ TEST(Blockchain, ReorganizeToWithNoDiscardedBlocksReturnsEmptyVector) {
     ASSERT_TRUE(discarded.has_value());
     EXPECT_TRUE(discarded->empty());
     EXPECT_EQ(chain.size(), 2u);
+}
+
+TEST(Blockchain, ClassifyNewBlockAcceptsCoinbaseAsFirstTransaction) {
+    Blockchain chain;
+    Transaction coinbase(kCoinbaseSender, "alice", 50, {});
+    Block block(1, chain.latest().hash_, 5000, {coinbase});
+    block.difficulty_ = 3;
+    block.hash_ = block.compute_hash();
+
+    EXPECT_EQ(chain.classify_new_block(block), BlockValidation::Valid);
+}
+
+TEST(Blockchain, ClassifyNewBlockAcceptsCoinbaseFollowedByRegularTransactions) {
+    Blockchain chain;
+    Transaction coinbase(kCoinbaseSender, "alice", 50, {});
+    Transaction regular("alice", "bob", 10, {});
+    Block block(1, chain.latest().hash_, 5000, {coinbase, regular});
+    block.difficulty_ = 3;
+    block.hash_ = block.compute_hash();
+
+    EXPECT_EQ(chain.classify_new_block(block), BlockValidation::Valid);
+}
+
+TEST(Blockchain, ClassifyNewBlockRejectsCoinbaseAsSecondTransaction) {
+    Blockchain chain;
+    Transaction regular("alice", "bob", 10, {});
+    Transaction coinbase(kCoinbaseSender, "mallory", 50, {});
+    Block block(1, chain.latest().hash_, 5000, {regular, coinbase});
+    block.difficulty_ = 3;
+    block.hash_ = block.compute_hash();
+
+    EXPECT_EQ(chain.classify_new_block(block), BlockValidation::Invalid);
+}
+
+TEST(Blockchain, ClassifyNewBlockRejectsTwoCoinbaseTransactions) {
+    Blockchain chain;
+    Transaction coinbase1(kCoinbaseSender, "alice", 50, {});
+    Transaction coinbase2(kCoinbaseSender, "mallory", 50, {});
+    Block block(1, chain.latest().hash_, 5000, {coinbase1, coinbase2});
+    block.difficulty_ = 3;
+    block.hash_ = block.compute_hash();
+
+    EXPECT_EQ(chain.classify_new_block(block), BlockValidation::Invalid);
+}
+
+TEST(Blockchain, ClassifyNewBlockWithNoCoinbaseIsUnaffectedByCoinbaseCheck) {
+    Blockchain chain;
+    Transaction regular1("alice", "bob", 10, {});
+    Transaction regular2("bob", "charlie", 5, {});
+    Block block(1, chain.latest().hash_, 5000, {regular1, regular2});
+    block.difficulty_ = 3;
+    block.hash_ = block.compute_hash();
+
+    EXPECT_EQ(chain.classify_new_block(block), BlockValidation::Valid);
+}
+
+TEST(Blockchain, ClassifyNewBlockRejectsMisplacedCoinbaseEvenWhenAlsoAFork) {
+    Blockchain chain;
+    Transaction regular("alice", "bob", 10, {});
+    Transaction coinbase(kCoinbaseSender, "mallory", 50, {});
+    Block block(1, zeroHash(), 5000, {regular, coinbase});
+    block.difficulty_ = 3;
+    block.hash_ = block.compute_hash();
+
+    EXPECT_EQ(chain.classify_new_block(block), BlockValidation::Invalid);
 }

@@ -412,15 +412,15 @@ std::vector<core::Transaction>
 Node::transactions_for_block(size_t limit) const {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
 
-  auto candidates =  mempool_.get_transactions_for_block(limit);
+  auto candidates = mempool_.get_transactions_for_block(limit);
 
   core::Ledger simulated{ledger_};
   std::vector<core::Transaction> valid;
 
-  for(const auto&tx : candidates) {
-      if(simulated.apply_transaction(tx)) {
-          valid.push_back(tx);
-      }
+  for (const auto &tx : candidates) {
+    if (simulated.apply_transaction(tx)) {
+      valid.push_back(tx);
+    }
   }
 
   return valid;

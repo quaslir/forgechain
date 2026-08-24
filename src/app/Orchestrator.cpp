@@ -59,9 +59,11 @@ void Orchestrator::mining_loop() {
     crypto::HashBytes prev_hash = node_.latest_hash();
     auto txs_for_block = node_.transactions_for_block(config_.kMaxTxsPerBlock);
 
-    if(!config_.reward_address.empty()) {
-        core::Transaction coinbase{core::kCoinbaseSender, config_.reward_address, OrchestratorConfig::mining_reward, crypto::bytes{}};
-        txs_for_block.insert(txs_for_block.begin(), coinbase);
+    if (!config_.reward_address.empty()) {
+      core::Transaction coinbase{core::kCoinbaseSender, config_.reward_address,
+                                 OrchestratorConfig::mining_reward,
+                                 crypto::bytes{}};
+      txs_for_block.insert(txs_for_block.begin(), coinbase);
     }
 
     core::Block mined = consensus::mine_block(
