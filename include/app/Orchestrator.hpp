@@ -1,5 +1,6 @@
 #pragma once
 #include "app/DemoLog.hpp"
+#include "app/RpcServer.hpp"
 #include "core/Blockchain.hpp"
 #include "core/Ledger.hpp"
 #include "core/Mempool.hpp"
@@ -28,7 +29,7 @@ struct OrchestratorConfig {
   int mine_every_seconds = 0;
   static constexpr uint32_t mine_difficulty = 15;
   static constexpr size_t kMaxTxsPerBlock = 50;
-  static constexpr uint64_t demo_wallet_starting_balance = 1'000'000;
+  uint16_t rpc_port{0};
   crypto::str node_name = "NODE";
 };
 class Orchestrator {
@@ -55,7 +56,7 @@ private:
   core::OrphanPool orphan_pool_;
   core::Ledger ledger_;
   network::Node node_;
-
+  std::optional<RpcServer> rpc_server_;
   mutable std::mutex state_mutex_;
 
   std::atomic<bool> running_{false};

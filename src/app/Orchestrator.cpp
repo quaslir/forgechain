@@ -29,6 +29,14 @@ bool Orchestrator::start() {
   if (config_.mine_every_seconds > 0) {
     mining_thread_ = std::thread(&Orchestrator::mining_loop, this);
   }
+  if (config_.rpc_port > 0) {
+    rpc_server_.emplace(node_, config_.rpc_port);
+    if (!rpc_server_->start()) {
+      log_.log("RPC", "FAILED to start RPC server on port " +
+                          std::to_string(config_.rpc_port));
+      rpc_server_.reset();
+    }
+  }
   bool at_least_one_peer_connected{false};
   for (const auto &address : config_.addresses) {
     if (node_.connect_to_peer(address.host, address.port)) {
@@ -127,6 +135,9 @@ void Orchestrator::stop() {
   running_.store(false);
   if (mining_thread_.joinable()) {
     mining_thread_.join();
+  }
+  if (rpc_server_.has_value()) {
+    rpc_server_->stop();
   }
   node_.stop();
 }
