@@ -29,8 +29,9 @@ struct OrchestratorConfig {
   int mine_every_seconds = 0;
   static constexpr uint32_t mine_difficulty = 15;
   static constexpr size_t kMaxTxsPerBlock = 50;
-  static constexpr uint64_t demo_wallet_starting_balance = 1'000'000;
+  static constexpr uint64_t mining_reward = 50;
   crypto::str node_name = "NODE";
+  crypto::str reward_address{};
 };
 class Orchestrator {
 public:

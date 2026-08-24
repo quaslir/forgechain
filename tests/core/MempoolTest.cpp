@@ -302,3 +302,23 @@ TEST(Mempool, ManyWalletsManyTransactionsAllAcceptedCorrectly) {
 
     EXPECT_EQ(mempool.size(), static_cast<size_t>(kWalletCount));
 }
+
+TEST(Mempool, RejectsCoinbaseMarkedTransaction) {
+    Mempool mempool;
+    Wallet alice = make_wallet();
+
+    Transaction tx(kCoinbaseSender, alice.address, 50, alice.keys.public_key);
+    tx.signature_ = sign(tx.serialize_for_signing(), alice.keys.private_key);
+
+    EXPECT_FALSE(mempool.add_transaction(tx, alice.keys.public_key));
+    EXPECT_EQ(mempool.size(), 0u);
+}
+
+TEST(Mempool, RejectsCoinbaseMarkedTransactionEvenWithEmptyKey) {
+    Mempool mempool;
+
+    Transaction tx(kCoinbaseSender, "alice-address", 50, {});
+
+    EXPECT_FALSE(mempool.add_transaction(tx, {}));
+    EXPECT_EQ(mempool.size(), 0u);
+}

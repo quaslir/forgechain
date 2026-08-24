@@ -2,6 +2,7 @@
 #include "crypto/CommonTypes.hpp"
 #include "network/Bootstrap.hpp"
 #include "network/PeerAddress.hpp"
+#include <atomic>
 #include <charconv>
 #include <csignal>
 #include <cstddef>
@@ -17,12 +18,13 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
-#include <atomic>
 namespace {
 forgechain::app::Orchestrator *g_orchestrator{nullptr};
 std::atomic<bool> g_shutting_down{false};
 void handle_sigint(int) {
-    if(g_shutting_down.exchange(true)) return;
+  if (g_shutting_down.exchange(true)) {
+    return;
+  }
   if (g_orchestrator) {
     g_orchestrator->stop();
   }
@@ -88,6 +90,13 @@ void parse_args(std::span<char *> argv,
       std::string_view bootstrap_file_path{argv[i]};
       if (!bootstrap_file_path.empty()) {
         file_bootstrap_path = bootstrap_file_path;
+      }
+    } else if (((view == "--reward-address") || view == "-r") &&
+               i + 1 < argv.size()) {
+      ++i;
+      std::string_view reward_address{argv[i]};
+      if (!reward_address.empty()) {
+        config.reward_address = reward_address;
       }
     } else {
       throw std::invalid_argument("invalid command argument");

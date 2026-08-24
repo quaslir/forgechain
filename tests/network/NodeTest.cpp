@@ -4,7 +4,10 @@
 #include "core/Mempool.hpp"
 #include "core/OrphanPool.hpp"
 #include "core/Ledger.hpp"
+#include "crypto/Address.hpp"
 #include "crypto/CommonTypes.hpp"
+#include "crypto/Keys.hpp"
+#include "crypto/Signature.hpp"
 
 #include <gtest/gtest.h>
 
@@ -18,8 +21,11 @@
 #include <thread>
 #include <vector>
 #include <cstddef>
+#include <optional>
+#include "core/Transaction.hpp"
 using namespace forgechain::network;
 using namespace forgechain::core;
+using namespace forgechain::crypto;
 
 namespace {
 
@@ -282,4 +288,101 @@ TEST(Node, RepeatedStartStopCyclesOnDifferentPortsDoNotLeakOrHang) {
             ASSERT_EQ(WaitForPeerCount(server, 1, std::chrono::seconds(1)), 1u);
         })) << "generation " << gen;
     }
+}
+
+namespace {
+
+struct TestWallet {
+    KeyPair keys;
+    str address;
+};
+
+TestWallet make_test_wallet() {
+    KeyPair kp = generate_keypair();
+    return TestWallet{kp, derive_address(kp.public_key)};
+}
+
+Transaction make_signed_test_tx(const TestWallet& sender, const str& recipient,
+                                 uint64_t amount) {
+    Transaction tx(sender.address, recipient, amount, sender.keys.public_key);
+    tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
+    return tx;
+}
+
+}  // namespace
+
+TEST(Node, TransactionsForBlockFiltersOutTransactionSenderCannotAfford) {
+    TestNode server(0, make_version());
+    TestWallet alice = make_test_wallet();
+    TestWallet bob = make_test_wallet();
+    server.ledger.set_balance(alice.address, 10);
+    server.ledger.set_balance(bob.address, 100);
+
+    Transaction affordable = make_signed_test_tx(bob, "charlie-address", 20);
+    Transaction unaffordable = make_signed_test_tx(alice, "charlie-address", 500);
+    server.mempool.add_transaction(affordable, bob.keys.public_key);
+    server.mempool.add_transaction(unaffordable, alice.keys.public_key);
+
+    auto selected = server.transactions_for_block(10);
+
+    ASSERT_EQ(selected.size(), 1u);
+    EXPECT_EQ(selected[0].sender_, bob.address);
+}
+
+TEST(Node, TransactionsForBlockKeepsBothWhenSequentiallyAffordable) {
+    TestNode server(0, make_version());
+    TestWallet alice = make_test_wallet();
+    TestWallet bob = make_test_wallet();
+    server.ledger.set_balance(alice.address, 100);
+    server.ledger.set_balance(bob.address, 0);
+
+    Transaction first = make_signed_test_tx(alice, bob.address, 60);
+    Transaction second = make_signed_test_tx(bob, "charlie-address", 30);
+    server.mempool.add_transaction(first, alice.keys.public_key);
+    server.mempool.add_transaction(second, bob.keys.public_key);
+
+    auto selected = server.transactions_for_block(10);
+
+    ASSERT_EQ(selected.size(), 2u);
+}
+
+TEST(Node, TransactionsForBlockDoesNotMutateRealLedger) {
+    TestNode server(0, make_version());
+    TestWallet alice = make_test_wallet();
+    TestWallet bob = make_test_wallet();
+    server.ledger.set_balance(alice.address, 100);
+    server.ledger.set_balance(bob.address, 0);
+
+    Transaction tx = make_signed_test_tx(alice, bob.address, 60);
+    server.mempool.add_transaction(tx, alice.keys.public_key);
+
+    auto ignored = server.transactions_for_block(10);
+    (void)ignored;
+
+    EXPECT_EQ(server.ledger.get_balance(alice.address), std::optional<uint64_t>(100));
+    EXPECT_EQ(server.ledger.get_balance(bob.address), std::optional<uint64_t>(0));
+}
+
+TEST(Node, TransactionsForBlockReturnsEmptyWhenMempoolEmpty) {
+    TestNode server(0, make_version());
+
+    auto selected = server.transactions_for_block(10);
+
+    EXPECT_TRUE(selected.empty());
+}
+
+TEST(Node, TransactionsForBlockRespectsLimitAfterFiltering) {
+    TestNode server(0, make_version());
+    TestWallet alice = make_test_wallet();
+    server.ledger.set_balance(alice.address, 1000);
+
+    for (int i = 0; i < 5; ++i) {
+        Transaction tx = make_signed_test_tx(alice, "recipient-address",
+                                              static_cast<uint64_t>(10 + i));
+        server.mempool.add_transaction(tx, alice.keys.public_key);
+    }
+
+    auto selected = server.transactions_for_block(2);
+
+    EXPECT_EQ(selected.size(), 2u);
 }

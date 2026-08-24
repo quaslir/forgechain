@@ -196,3 +196,82 @@ TEST(Ledger, ManySequentialTransfersLeaveConsistentTotalSupply) {
 
     EXPECT_EQ(total, kInitialTotal);
 }
+
+TEST(Ledger, CoinbaseTransactionCreditsRecipientWithoutSenderBalance) {
+    Ledger ledger;
+
+    Transaction tx(kCoinbaseSender, "alice", 50, {});
+    EXPECT_TRUE(ledger.apply_transaction(tx));
+
+    EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(50));
+    EXPECT_EQ(ledger.get_balance(kCoinbaseSender), std::nullopt);
+}
+
+TEST(Ledger, CoinbaseTransactionSucceedsRegardlessOfAmount) {
+    Ledger ledger;
+
+    Transaction tx(kCoinbaseSender, "alice", 1000000, {});
+    EXPECT_TRUE(ledger.apply_transaction(tx));
+
+    EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(1000000));
+}
+
+TEST(Ledger, MultipleCoinbaseTransactionsAccumulateOnRecipient) {
+    Ledger ledger;
+
+    EXPECT_TRUE(ledger.apply_transaction(Transaction(kCoinbaseSender, "alice", 50, {})));
+    EXPECT_TRUE(ledger.apply_transaction(Transaction(kCoinbaseSender, "alice", 50, {})));
+    EXPECT_TRUE(ledger.apply_transaction(Transaction(kCoinbaseSender, "alice", 50, {})));
+
+    EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(150));
+}
+
+TEST(Ledger, CoinbaseThenRegularTransactionFromRecipientWorks) {
+    Ledger ledger;
+    ledger.set_balance("bob", 0);
+
+    EXPECT_TRUE(ledger.apply_transaction(Transaction(kCoinbaseSender, "alice", 50, {})));
+    EXPECT_TRUE(ledger.apply_transaction(Transaction("alice", "bob", 30, {})));
+
+    EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(20));
+    EXPECT_EQ(ledger.get_balance("bob"), std::optional<uint64_t>(30));
+}
+
+TEST(Ledger, ReverseCoinbaseTransactionDebitsRecipientOnly) {
+    Ledger ledger;
+
+    Transaction tx(kCoinbaseSender, "alice", 50, {});
+    EXPECT_TRUE(ledger.apply_transaction(tx));
+    EXPECT_TRUE(ledger.reverse_transaction(tx));
+
+    EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(0));
+    EXPECT_EQ(ledger.get_balance(kCoinbaseSender), std::nullopt);
+}
+
+TEST(Ledger, ReverseCoinbaseAfterRecipientSpentSomeFails) {
+    Ledger ledger;
+    ledger.set_balance("bob", 0);
+
+    Transaction coinbase(kCoinbaseSender, "alice", 50, {});
+    EXPECT_TRUE(ledger.apply_transaction(coinbase));
+    EXPECT_TRUE(ledger.apply_transaction(Transaction("alice", "bob", 40, {})));
+
+    EXPECT_FALSE(ledger.reverse_transaction(coinbase));
+    EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(10));
+}
+
+TEST(Ledger, CoinbaseAndRegularTransactionsPreserveExpectedTotalSupply) {
+    Ledger ledger;
+    ledger.set_balance("bob", 0);
+    ledger.set_balance("charlie", 0);
+
+    EXPECT_TRUE(ledger.apply_transaction(Transaction(kCoinbaseSender, "alice", 50, {})));
+    EXPECT_TRUE(ledger.apply_transaction(Transaction(kCoinbaseSender, "bob", 50, {})));
+    EXPECT_TRUE(ledger.apply_transaction(Transaction("alice", "charlie", 20, {})));
+
+    uint64_t total = ledger.get_balance("alice").value_or(0) +
+                      ledger.get_balance("bob").value_or(0) +
+                      ledger.get_balance("charlie").value_or(0);
+
+    EXPECT_EQ(total, 100u);
+}

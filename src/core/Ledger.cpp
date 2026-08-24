@@ -15,12 +15,14 @@ std::optional<uint64_t> Ledger::get_balance(const core::str &address) const {
 }
 
 bool Ledger::apply_transaction(const Transaction &tx) {
-  if (!balances_.contains(tx.sender_))
-    return false;
-  if (tx.amount_ > balances_[tx.sender_])
-    return false;
+  if (tx.sender_ != kCoinbaseSender) {
+    if (!balances_.contains(tx.sender_))
+      return false;
+    if (tx.amount_ > balances_[tx.sender_])
+      return false;
 
-  balances_[tx.sender_] -= tx.amount_;
+    balances_[tx.sender_] -= tx.amount_;
+  }
   balances_[tx.recipient_] += tx.amount_;
   return true;
 }
@@ -29,8 +31,11 @@ bool Ledger::reverse_transaction(const Transaction &tx) {
     return false;
   if (tx.amount_ > balances_[tx.recipient_])
     return false;
-  balances_[tx.sender_] += tx.amount_;
   balances_[tx.recipient_] -= tx.amount_;
+  if (tx.sender_ != kCoinbaseSender) {
+    balances_[tx.sender_] += tx.amount_;
+  }
+
   return true;
 }
 } // namespace forgechain::core
