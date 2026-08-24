@@ -15,8 +15,8 @@ function(add_forgechain_test_executable name)
     target_link_libraries(${name} PRIVATE
         crypto
         core
-        consensus
         network
+        consensus
         GTest::gtest_main
         project_warnings
     )
@@ -55,3 +55,9 @@ add_forgechain_test_executable(network_tests
     network/NodeTest.cpp
     network/NodeReorgLedgerTest.cpp
 )
+
+add_forgechain_test_executable(app_tests
+    ${CMAKE_SOURCE_DIR}/src/app/RpcServer.cpp
+    app/RpcServerTest.cpp
+)
+target_include_directories(app_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
