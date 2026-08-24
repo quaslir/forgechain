@@ -91,7 +91,8 @@ void parse_args(std::span<char *> argv,
       if (!bootstrap_file_path.empty()) {
         file_bootstrap_path = bootstrap_file_path;
       }
-    } else if (((view == "--rpc-port") || (view == "-R")) && i + 1 < argv.size()) {
+    } else if (((view == "--rpc-port") || (view == "-R")) &&
+               i + 1 < argv.size()) {
       ++i;
       std::string_view rpc_port_view{argv[i]};
       auto rpc_port = parse_number(rpc_port_view);

@@ -14,9 +14,9 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <thread>
 #include <vector>
-#include <sstream>
 namespace forgechain::app {
 
 struct OrchestratorConfig {
@@ -52,7 +52,6 @@ private:
   void handle_balance_command(const crypto::str &address);
   void handle_height_command();
   void handle_peers_command();
-  void handle_set_balance_command(std::istringstream& iss);
   OrchestratorConfig config_;
   demo::DemoLog log_;
   core::Blockchain chain_;

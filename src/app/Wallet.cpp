@@ -5,12 +5,13 @@
 #include "crypto/Hash.hpp"
 #include "crypto/Keys.hpp"
 #include "crypto/Signature.hpp"
-#include "network/Handshake.hpp"
-#include "network/Message.hpp"
+#include "network/Socket.hpp"
 #include "network/TcpSocket.hpp"
 #include <cstdint>
 #include <fstream>
+#include <optional>
 #include <stdexcept>
+#include <utility>
 namespace forgechain::app {
 Wallet::Wallet(const crypto::str &path) {
   std::ifstream file(path);
@@ -26,6 +27,7 @@ Wallet::Wallet(const crypto::str &path) {
 }
 bool Wallet::load_from_file(std::ifstream &file) {
   auto read_and_check = [](std::ifstream &file_, crypto::str &buffer) -> bool {
+    buffer.clear();
     file_ >> buffer;
     return !buffer.empty();
   };
@@ -54,23 +56,86 @@ void Wallet::save_to_file(const crypto::str &path) {
   file << crypto::to_hex(keys_.public_key) << std::endl;
 }
 
-bool Wallet::send(const crypto::str &recipient, uint64_t amount,
-                  const crypto::str &host, uint16_t port) {
+crypto::str Wallet::read_from(network::TcpSocket socket) {
+  crypto::str line{};
+  uint8_t byte{};
+
+  while (network::read_exact(socket.fd(), &byte, 1)) {
+    if (byte == '\n')
+      break;
+    line.push_back(static_cast<char>(byte));
+  }
+
+  return line;
+}
+
+std::optional<bool> Wallet::send(const crypto::str &recipient, uint64_t amount,
+                                 const crypto::str &host, uint16_t port) const {
   core::Transaction tx{address_, recipient, amount, keys_.public_key};
   tx.signature_ = crypto::sign(tx.serialize_for_signing(), keys_.private_key);
   network::TcpSocket socket = network::connect_to(host, port);
   if (!socket.is_valid())
-    return false;
-  auto info = network::perform_handshake(
-      socket.fd(), network::VersionInfo{.protocol_version = 1,
-                                        .chain_height = 0,
-                                        .timestamp = 0});
-  if (!info.has_value())
-    return false;
-  network::Message msg{.type = network::MessageType::TX,
-                       .payload = tx.serialize()};
-  return network::send_message(socket.fd(), msg);
+    return std::nullopt;
+
+  crypto::str hex = crypto::to_hex(tx.serialize());
+  crypto::str command = "SUBMITTX " + hex + '\n';
+  if (!network::send_exact(socket.fd(),
+                           reinterpret_cast<const uint8_t *>(command.data()),
+                           command.size())) {
+    return std::nullopt;
+  }
+
+  return read_from(std::move(socket)) == "OK";
 }
 
-const crypto::str& Wallet::address() const {return address_;}
+std::optional<crypto::str> Wallet::balance(const crypto::str &host,
+                                           uint16_t port) const {
+  network::TcpSocket socket = network::connect_to(host, port);
+  if (!socket.is_valid()) {
+    return std::nullopt;
+  }
+  crypto::str command = "GETBALANCE " + address_ + '\n';
+  if (!network::send_exact(socket.fd(),
+                           reinterpret_cast<const uint8_t *>(command.data()),
+                           command.size())) {
+    return std::nullopt;
+  }
+
+  return read_from(std::move(socket));
+}
+
+std::optional<crypto::str> Wallet::height(const crypto::str &host,
+                                          uint16_t port) const {
+  network::TcpSocket socket = network::connect_to(host, port);
+  if (!socket.is_valid()) {
+    return std::nullopt;
+  }
+
+  crypto::str command{"HEIGHT\n"};
+  if (!network::send_exact(socket.fd(),
+                           reinterpret_cast<const uint8_t *>(command.data()),
+                           command.size())) {
+    return std::nullopt;
+  }
+
+  return read_from(std::move(socket));
+}
+[[nodiscard]] std::optional<crypto::str> Wallet::peers(const crypto::str &host,
+                                                       uint16_t port) const {
+  network::TcpSocket socket = network::connect_to(host, port);
+  if (!socket.is_valid()) {
+    return std::nullopt;
+  }
+
+  crypto::str command{"PEERS\n"};
+  if (!network::send_exact(socket.fd(),
+                           reinterpret_cast<const uint8_t *>(command.data()),
+                           command.size())) {
+    return std::nullopt;
+  }
+
+  return read_from(std::move(socket));
+}
+
+const crypto::str &Wallet::address() const { return address_; }
 } // namespace forgechain::app
