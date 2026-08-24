@@ -91,6 +91,15 @@ void parse_args(std::span<char *> argv,
       if (!bootstrap_file_path.empty()) {
         file_bootstrap_path = bootstrap_file_path;
       }
+    } else if (((view == "--rpc-port") || (view == "-R")) && i + 1 < argv.size()) {
+      ++i;
+      std::string_view rpc_port_view{argv[i]};
+      auto rpc_port = parse_number(rpc_port_view);
+      if (!rpc_port.has_value()) {
+        throw std::invalid_argument("invalid rpc port");
+      }
+
+      config.rpc_port = static_cast<uint16_t>(*rpc_port);
     } else if (((view == "--reward-address") || view == "-r") &&
                i + 1 < argv.size()) {
       ++i;
