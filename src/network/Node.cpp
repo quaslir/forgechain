@@ -425,9 +425,9 @@ Node::transactions_for_block(size_t limit) const {
 
   return valid;
 }
-void Node::set_balance(const crypto::str& address, uint64_t amount) {
-    std::lock_guard<std::mutex> chain_lock(chain_mutex_);
-    ledger_.set_balance(address, amount);
+void Node::set_balance(const crypto::str &address, uint64_t amount) {
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  ledger_.set_balance(address, amount);
 }
 void Node::stop() {
   running_.store(false);
