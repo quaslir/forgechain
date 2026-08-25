@@ -4,7 +4,7 @@ Runs 4 isolated `forgechain` node containers on their own Docker network, so
 you can observe propagation, sync, and (later) fork resolution across real,
 separate processes -- not multiple `Node` objects sharing one process
 (`PropagationTest.cpp`), and not two terminals sharing one host's loopback
-interface (`peer_a`/`peer_b` demo, see `src/app/peer_node_demo.cpp`).
+interface.
 
 ## Topology
 
@@ -21,9 +21,11 @@ node3
 node4
 ```
 
-Only `node1` mines by default. Blocks and transactions it produces should
-propagate outward through the chain to node2, node3, and node4 via the same
-INV/GETDATA/BLOCK relay logic exercised in `PropagationTest.cpp`.
+All four nodes mine (at different intervals: 10s/2s/5s/10s) and each has its
+own `--reward-address`, so each accumulates its own coinbase rewards
+independently. Blocks and transactions propagate outward through the chain
+via the same INV/GETDATA/BLOCK relay logic exercised in
+`PropagationTest.cpp`.
 
 Nodes connect to each other using **fixed IP addresses** (`172.28.0.11`
 through `172.28.0.14`), not Docker's service-name DNS. This is because
@@ -31,6 +33,20 @@ through `172.28.0.14`), not Docker's service-name DNS. This is because
 accepts literal IP addresses -- it does not resolve hostnames. If you add
 more nodes, assign them the next free IP in the `172.28.0.0/24` subnet and
 update `docker-compose.yml`'s `ipv4_address` fields accordingly.
+
+### Reward addresses
+
+Each node's `--reward-address` in `docker-compose.yml` is a real address
+generated with `wallet` (`./wallet --keyfile <path> --connect <host> <port>`
+prints its address on startup; it doesn't need a live node to connect to for
+address generation alone). The node itself never sees or needs the private
+key -- that's the whole point of `--reward-address` taking a plain address
+string, not a keyfile. The private keys for these four demo addresses
+aren't checked in anywhere; they were one-off generated to populate this
+compose file. If you want to actually spend what one of these nodes mines,
+generate your own wallet, take its printed address, and substitute it into
+that node's `--reward-address` in `docker-compose.yml` before starting the
+harness.
 
 ## Running it
 
@@ -58,22 +74,25 @@ To view a single node's logs:
 docker compose logs -f node1
 ```
 
+To check a node's balance or chain height without attaching to its stdin
+(each node's own interactive command loop reads container stdin, which
+`docker compose logs` doesn't expose), the RPC channel isn't enabled by
+default here -- add `--rpc-port <PORT>` to a service's `command` in
+`docker-compose.yml` and publish that port to query it from the host with
+`nc` (see `docs/cli-usage.md` §3 for the RPC protocol).
+
 ## What to look for
 
-Each node's log uses the same categorized format as the two-terminal demo
-(`[BOOT]`, `[PEER]`, `[CHAIN]`, `[MEMPOOL]`, `[MINE]`, `[STATUS]`,
-`[SHUTDOWN]` -- see `src/app/peer_node_demo.cpp`'s header comment for
-details). Watch for:
+Each node logs in the same categorized format used by `Orchestrator`
+(`[BOOT]`, `[PEER]`, `[MINE]`, etc.). Watch for:
 
 - `[PEER] TCP connect + handshake succeeded` on node2/3/4 -- confirms the
   chain topology connected successfully.
-- `[MINE]` lines on node1 as it mines new blocks.
-- `[CHAIN] height ... -> ...` lines appearing on node2, then node3, then
-  node4 shortly after each node1 `[MINE]` line -- confirms propagation is
-  relaying block-by-block down the chain, not just to node1's immediate
-  peer.
-- All four nodes' `[CHAIN]` height should converge to the same value and
-  stay in sync as node1 keeps mining.
+- `[MINE] block ACCEPTED, height now ...` lines on every node as it mines
+  its own blocks and relays/accepts others'.
+- All four nodes' heights should converge to the same value and stay in
+  sync as mining continues -- the heavier chain (by cumulative work) wins,
+  same as in `NodeReorg*` tests.
 
 ## Stopping and cleaning up
 
@@ -95,7 +114,6 @@ docker compose down -v
   `docker network disconnect`) so two groups of nodes mine independently
   before reconnecting -- see the network-partition-test issue for that
   follow-up.
-- All nodes here mine with the same demo wallet content pattern as
-  `peer_node_demo.cpp` (see that file for why: `Node` has no public
-  "mine and broadcast" API, so mining is simulated by injecting a
-  self-connected raw peer).
+- No `wallet` container is included here; sending a transaction between two
+  demo nodes currently means running `wallet` on the host against a
+  published RPC port (see above).

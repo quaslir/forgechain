@@ -2,7 +2,7 @@ services:
   node1:
     build: .
     container_name: forgechain-node1
-    command: ["--port", "9000", "--mine-every", "10"]
+    command: ["--port", "9000", "--mine-every", "10", "--reward-address", "5587a231bb6644865e0991de80b77f2704fef489a57c08ddd4059889a46cc8a9"]
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "9000"]
       interval: 2s
@@ -16,7 +16,7 @@ services:
   node2:
     build: .
     container_name: forgechain-node2
-    command: ["--port", "9000", "--connect", "172.28.0.11", "9000", "--mine-every", "2"]
+    command: ["--port", "9000", "--connect", "172.28.0.11", "9000", "--mine-every", "2", "--reward-address", "5a53b6fa00bf9277431904cff2bcc9d01139d9f98a85710f1f88b4a9ff89c455"]
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "9000"]
       interval: 2s
@@ -33,7 +33,7 @@ services:
   node3:
     build: .
     container_name: forgechain-node3
-    command: ["--port", "9000", "--connect", "172.28.0.12", "9000", "--mine-every", "5"]
+    command: ["--port", "9000", "--connect", "172.28.0.12", "9000", "--mine-every", "5", "--reward-address", "53a69c93323cbc482fc200c1c2d325a8433f6ae9875d8681adddd3cf35f58f68"]
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "9000"]
       interval: 2s
@@ -50,7 +50,7 @@ services:
   node4:
     build: .
     container_name: forgechain-node4
-    command: ["--port", "9000", "--connect", "172.28.0.13", "9000", "--mine-every", "10"]
+    command: ["--port", "9000", "--connect", "172.28.0.13", "9000", "--mine-every", "10", "--reward-address", "5e225148f60cc5f653a2b2521781651cba849e572b415beda2da158e56c7805b"]
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "9000"]
       interval: 2s

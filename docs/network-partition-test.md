@@ -36,7 +36,7 @@ different hash than node3/node4 at height 5).
 
 Once you're satisfied the two groups have diverged, manually connect them.
 `Node::connect_to_peer` is only called once at startup (see
-`src/app/peer_node_demo.cpp`) -- there's no live "connect now" command --
+`src/app/Orchestrator.cpp`) -- there's no live "connect now" command --
 so the simplest way to bridge them is to restart one node with an added
 `--connect` pointing at the other group.
 
@@ -97,8 +97,8 @@ the same way any other block relay works.
   operator control exactly when the reconnection happens and watch what
   follows in real time.
 - The `[REORG]` log line is printed directly to stderr from
-  `Node::try_reorg` (not through `peer_node_demo.cpp`'s categorized
+  `Node::try_reorg` (not through `Orchestrator`'s categorized
   `DemoLog`), since `Node` has no logger parameter -- it will appear
-  interleaved with the demo's own `[BOOT]`/`[CHAIN]`/etc. lines but in a
+  interleaved with the node's own `[BOOT]`/`[MINE]`/etc. lines but in a
   slightly different format (`[NODE:PORT] [REORG] ...` instead of
-  `[HH:MM:SS.mmm] [NODE:PORT] [REORG] ...`).
+  `[HH:MM:SS.mmm] [NODE] [REORG] ...`).

@@ -53,7 +53,7 @@
 #include "network/Node.hpp"
 #include "network/TcpSocket.hpp"
 
-#include "DemoLog.hpp"
+#include "app/DemoLog.hpp"
 
 #include <atomic>
 #include <chrono>

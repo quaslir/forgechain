@@ -23,6 +23,15 @@ the network isn't perfect (latency, partitions, malicious peers).
 - [x] P2P networking (handshake, block/tx propagation, gossip)
 - [x] Multi-node synchronization & fork resolution (heaviest chain rule)
 - [x] Mempool for pending transactions
+- [x] Coinbase transactions & configurable mining rewards
+- [x] Interactive node CLI (`balance`/`height`/`peers`) via `Orchestrator`
+- [x] Standalone `wallet` (keypair generation/persistence, `send`/`balance`/`height`/`peers`)
+- [x] RPC query channel, separate from the P2P protocol, connecting `wallet` to a node
+
+See `docs/cli-usage.md` for the full CLI reference (every flag and command
+on both `forgechain` and `wallet`), `docs/protocol.md` for the wire
+protocol, `docs/fork-resolution.md` for how forks and reorgs are handled,
+and `docs/docker-harness.md` for running a real 4-node network in Docker.
 
 ## Status
 

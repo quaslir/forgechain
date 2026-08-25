@@ -50,6 +50,11 @@ if(ENABLE_ASAN)
 endif()
 
 
+option(FORGECHAIN_STATIC_OPENSSL "Link OpenSSL statically instead of dynamically" OFF)
+if(FORGECHAIN_STATIC_OPENSSL)
+    set(OPENSSL_USE_STATIC_LIBS TRUE)
+endif()
+
 find_package(OpenSSL REQUIRED)
 
 
