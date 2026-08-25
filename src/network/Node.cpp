@@ -436,6 +436,12 @@ Node::transactions_for_block(size_t limit) const {
 
   return valid;
 }
+
+std::vector<core::Transaction> Node::mempool_snapshot() const {
+    std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+    return mempool_.get_transactions_for_block(mempool_.size());
+}
+
 void Node::set_balance(const crypto::str &address, uint64_t amount) {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
   ledger_.set_balance(address, amount);

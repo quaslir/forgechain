@@ -149,6 +149,8 @@ void Orchestrator::run_command_loop() {
         }
 
         handle_connect_to_peer(host, static_cast<uint16_t>(*port_number));
+    } else if(command == "mempool") {
+        handle_mempool_command();
     }
     else if(command == "help") {
         handle_help_command();
@@ -207,13 +209,15 @@ void Orchestrator::handle_set_reward_address(const crypto::str& address) {
 }
 void Orchestrator::handle_help_command() {
   std::cout << "commands:" << std::endl;
-  std::cout << "  balance <address>       show Ledger balance for address" << std::endl;
-  std::cout << "  height                   show current chain height" << std::endl;
-  std::cout << "  peers                    show connected peer count" << std::endl;
-  std::cout << "  status                   show node configuration" << std::endl;
+  std::cout << "  balance <address>        show Ledger balance for address" << std::endl;
+  std::cout << "  height                    show current chain height" << std::endl;
+  std::cout << "  peers                     show connected peer count" << std::endl;
+  std::cout << "  mempool                   show pending transactions in mempool" << std::endl;
+  std::cout << "  status                    show node configuration" << std::endl;
   std::cout << "  set reward-address <addr> change mining reward address" << std::endl;
-  std::cout << "  help                     show this message" << std::endl;
-  std::cout << "  quit / exit              shut down the node" << std::endl;
+  std::cout << "  connect <host> <port>     connect to a peer" << std::endl;
+  std::cout << "  help                      show this message" << std::endl;
+  std::cout << "  quit / exit               shut down the node" << std::endl;
 }
 
 void Orchestrator::handle_connect_to_peer(const crypto::str& host, uint16_t port) {
@@ -222,6 +226,18 @@ void Orchestrator::handle_connect_to_peer(const crypto::str& host, uint16_t port
         } else {
             std::cout << "failed to connect to " << host << ":" << port << std::endl;
         }
+}
+void Orchestrator::handle_mempool_command() {
+auto txs = node_.mempool_snapshot();
+if(txs.empty()) {
+    std::cout << "(mempool is empty)" << std::endl;
+        return;
+}
+std::cout << txs.size() << " transaction(s):" << std::endl;
+for(const auto&tx :txs ) {
+    std::cout << "  " << tx.sender_ << " -> " << tx.recipient_ << " : "
+                   << tx.amount_ << std::endl;
+}
 }
 void Orchestrator::stop() {
   running_.store(false);
