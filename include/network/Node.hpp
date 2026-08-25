@@ -2,6 +2,7 @@
 
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
+#include "core/ForkResolution.hpp"
 #include "core/Ledger.hpp"
 #include "core/Mempool.hpp"
 #include "core/OrphanPool.hpp"
@@ -74,7 +75,7 @@ private:
   [[nodiscard]] bool apply_block_to_ledger(const core::Block &block);
 
   std::optional<std::vector<crypto::HashBytes>>
-  try_reorg(const core::Block &candidate);
+  try_reorg(core::ForkChain && fork_chain);
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};

@@ -232,6 +232,11 @@ void Node::handle_getdata(Peer *peer, const crypto::bytes &payload) {
       auto block_container = blockchain_.find(item.hash);
       if (block_container.has_value()) {
         send_msg(peer, MessageType::BLOCK, block_container->serialize());
+      } else {
+          auto block_container_in_orphan = orphan_pool_.find_orphan(item.hash);
+          if(block_container_in_orphan.has_value()) {
+              send_msg(peer, MessageType::BLOCK, block_container_in_orphan->serialize());
+          }
       }
     }
 
@@ -278,7 +283,16 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
     std::unique_lock<std::mutex> orphan_lock(orphan_mutex_);
 
     orphan_pool_.add_orphan(std::move(*block_container));
-    auto reorg_hashes = try_reorg(fork_candidate_block);
+    auto fork_chain =
+        core::build_fork_chain(blockchain_, orphan_pool_, fork_candidate_block);
+    if(!fork_chain.has_value()) {
+        InventoryItem item{.type = InventoryItemType::BLOCK, .hash = fork_candidate_block.prev_hash_};
+        std::vector<InventoryItem> items{item};
+        if(peer) {
+            send_msg(peer, MessageType::GETDATA, serialize_inventory(items));
+        }
+    } else {
+    auto reorg_hashes = try_reorg(std::move(*fork_chain));
     chain_lock.unlock();
     orphan_lock.unlock();
 
@@ -286,6 +300,7 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
       for (const auto &reorg_hash : *reorg_hashes) {
         broadcast_inv(peer, InventoryItemType::BLOCK, reorg_hash);
       }
+    }
     }
     break;
   }
@@ -322,19 +337,15 @@ void Node::handle_getblocks(Peer *peer, const crypto::bytes &payload) {
 void Node::handle_ping(Peer *peer) { send_msg(peer, MessageType::PONG, {}); }
 void Node::handle_pong() {}
 std::optional<std::vector<crypto::HashBytes>>
-Node::try_reorg(const core::Block &candidate) {
-  auto fork_chain =
-      core::build_fork_chain(blockchain_, orphan_pool_, candidate);
+Node::try_reorg(core::ForkChain && fork_chain) {
 
-  if (!fork_chain.has_value())
-    return std::nullopt;
-  if (!core::is_fork_heavier(blockchain_, *fork_chain))
+  if (!core::is_fork_heavier(blockchain_, fork_chain))
     return std::nullopt;
   std::vector<crypto::HashBytes> new_hashes;
   std::unordered_set<core::HashBytes, crypto::HashBytesHasher>
       new_branch_hashes;
   std::vector<core::Transaction> new_branch_txs;
-  for (const auto &block : fork_chain->blocks) {
+  for (const auto &block : fork_chain.blocks) {
     new_hashes.push_back(block.hash_);
     for (const auto &tx : block.transactions_) {
       new_branch_hashes.insert(tx.compute_hash());
@@ -342,7 +353,7 @@ Node::try_reorg(const core::Block &candidate) {
     }
   }
 
-  auto reorganize_result = blockchain_.reorganize_to(std::move(*fork_chain));
+  auto reorganize_result = blockchain_.reorganize_to(std::move(fork_chain));
   if (!reorganize_result.has_value())
     return std::nullopt;
 

@@ -8,6 +8,12 @@
 // no mining), and assert on all three side effects together -- plus the
 // return value used for INV rebroadcast.
 //
+// try_reorg now takes an already-built core::ForkChain&& (Node::handle_block
+// builds it via core::build_fork_chain first, so it can request a missing
+// ancestor from a peer instead of calling try_reorg when the chain can't be
+// built). Tests mirror that: build the ForkChain via build_fork_chain, then
+// pass it to try_reorg.
+//
 // Ground truth for Ledger correctness: an independent Ledger that replays
 // only the winning branch from genesis. If Node's ledger_ matches that after
 // try_reorg, the incremental apply/reverse bookkeeping is provably correct
@@ -21,6 +27,7 @@
 #include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
+#include "core/ForkResolution.hpp"
 #include "core/Ledger.hpp"
 #include "core/Mempool.hpp"
 #include "core/OrphanPool.hpp"
@@ -36,6 +43,7 @@
 #include <optional>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 #include "network/Handshake.hpp"
 #define private public
@@ -47,7 +55,6 @@ using namespace forgechain::core;
 using namespace forgechain::crypto;
 
 namespace {
-
 
 struct Wallet {
   KeyPair keys;
@@ -65,7 +72,6 @@ Transaction make_signed_tx(const Wallet &sender, const str &recipient,
   tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
   return tx;
 }
-
 
 Block make_block(const HashBytes &prev_hash, uint64_t timestamp_seed,
                   std::vector<Transaction> txs, uint32_t difficulty = 0) {
@@ -86,7 +92,6 @@ struct TestNode : Node {
              chain, mempool, orphan_pool, ledger) {}
 };
 
-
 Ledger recompute_ledger_from_genesis(
     const std::vector<std::pair<str, uint64_t>> &initial_balances,
     const std::vector<Block> &chain_blocks) {
@@ -104,18 +109,17 @@ Ledger recompute_ledger_from_genesis(
 
 } // namespace
 
-
 TEST(NodeReorg, NoTransactionsChainSwapHappensAndLedgerUntouched) {
   TestNode node;
-
 
   Block losing = make_block(node.chain.latest().hash_, 1000, {}, 0);
   node.chain.add_block(Block(losing));
 
-
   Block winning = make_block(node.chain.at(0).hash_, 2000, {}, 4);
 
-  auto result = node.try_reorg(winning);
+  auto fork_chain = build_fork_chain(node.chain, node.orphan_pool, winning);
+  ASSERT_TRUE(fork_chain.has_value());
+  auto result = node.try_reorg(std::move(*fork_chain));
 
   ASSERT_TRUE(result.has_value());
   ASSERT_EQ(result->size(), 1u);
@@ -162,7 +166,10 @@ TEST(NodeReorg, LedgerMatchesRecomputeFromGenesisAfterReorg) {
 
   node.orphan_pool.add_orphan(Block(winning_block1));
 
-  auto result = node.try_reorg(winning_candidate);
+  auto fork_chain =
+      build_fork_chain(node.chain, node.orphan_pool, winning_candidate);
+  ASSERT_TRUE(fork_chain.has_value());
+  auto result = node.try_reorg(std::move(*fork_chain));
   ASSERT_TRUE(result.has_value())
       << "heavier fork (work 8 > 4) must be accepted";
   ASSERT_EQ(result->size(), 2u);
@@ -177,13 +184,7 @@ TEST(NodeReorg, LedgerMatchesRecomputeFromGenesisAfterReorg) {
       {{alice.address, 1000}, {bob.address, 1000}, {carol.address, 1000}},
       {winning_block1, winning_candidate});
   EXPECT_EQ(node.ledger.get_balance(alice.address),
-            ground_truth.get_balance(alice.address))
-      << "BUG: try_reorg's forward-apply loop skips a new-branch tx "
-         "whenever its hash is in `tx_hashes` -- but tx_hashes is built "
-         "from the new branch itself, so this is true for every "
-         "new-branch transaction. Nothing from the winning branch is "
-         "ever applied; the ledger is stuck at the common ancestor's "
-         "balances instead of reflecting the newly-canonical chain.";
+            ground_truth.get_balance(alice.address));
   EXPECT_EQ(node.ledger.get_balance(bob.address),
             ground_truth.get_balance(bob.address));
   EXPECT_EQ(node.ledger.get_balance(carol.address),
@@ -226,15 +227,16 @@ TEST(NodeReorg, SharedTransactionBetweenBranchesIsNotDoubleCounted) {
   node.chain.add_block(Block(losing_block));
   ASSERT_EQ(*node.ledger.get_balance(alice.address), 875u);
 
-  Block winning_candidate =
-      make_block(genesis_hash, 2000, {shared_tx}, 3);
+  Block winning_candidate = make_block(genesis_hash, 2000, {shared_tx}, 3);
 
-  auto result = node.try_reorg(winning_candidate);
+  auto fork_chain =
+      build_fork_chain(node.chain, node.orphan_pool, winning_candidate);
+  ASSERT_TRUE(fork_chain.has_value());
+  auto result = node.try_reorg(std::move(*fork_chain));
   ASSERT_TRUE(result.has_value());
 
   EXPECT_EQ(*node.ledger.get_balance(alice.address), 900u);
   EXPECT_EQ(*node.ledger.get_balance(bob.address), 100u);
-
 
   EXPECT_TRUE(node.mempool.has_transaction(losing_only_tx.compute_hash()));
 
@@ -258,7 +260,10 @@ TEST(NodeReorg, WinningBranchTransactionThatLedgerCannotAffordDoesNotDesync) {
   Block winning_candidate =
       make_block(genesis_hash, 2000, {unaffordable_tx}, /*diff=*/4);
 
-  auto result = node.try_reorg(winning_candidate);
+  auto fork_chain =
+      build_fork_chain(node.chain, node.orphan_pool, winning_candidate);
+  ASSERT_TRUE(fork_chain.has_value());
+  auto result = node.try_reorg(std::move(*fork_chain));
 
   if (!result.has_value()) {
     EXPECT_EQ(node.chain.latest().hash_, losing_block.hash_);
@@ -293,9 +298,14 @@ TEST(NodeReorg, LighterForkIsRejectedAndNothingChanges) {
   ASSERT_TRUE(node.ledger.apply_transaction(canonical_tx));
   node.chain.add_block(Block(canonical_block));
 
-  Block lighter_candidate = make_block(genesis_hash, 2000, {},0);
+  Block lighter_candidate = make_block(genesis_hash, 2000, {}, 0);
 
-  auto result = node.try_reorg(lighter_candidate);
+  auto fork_chain =
+      build_fork_chain(node.chain, node.orphan_pool, lighter_candidate);
+  ASSERT_TRUE(fork_chain.has_value())
+      << "fork_chain must still build (common ancestor exists at genesis) "
+         "-- it's the weight check inside try_reorg that must reject it";
+  auto result = node.try_reorg(std::move(*fork_chain));
 
   EXPECT_FALSE(result.has_value());
   EXPECT_EQ(node.chain.size(), 2u);
@@ -303,7 +313,6 @@ TEST(NodeReorg, LighterForkIsRejectedAndNothingChanges) {
   EXPECT_EQ(*node.ledger.get_balance(alice.address), 900u);
   EXPECT_EQ(node.mempool.size(), 0u);
 }
-
 
 TEST(NodeReorg, DisconnectedCandidateIsRejectedAndNothingChanges) {
   TestNode node;
@@ -314,9 +323,10 @@ TEST(NodeReorg, DisconnectedCandidateIsRejectedAndNothingChanges) {
   unknown_hash.fill(0xAB);
   Block dangling_candidate = make_block(unknown_hash, 3000, {}, 10);
 
-  auto result = node.try_reorg(dangling_candidate);
+  auto fork_chain =
+      build_fork_chain(node.chain, node.orphan_pool, dangling_candidate);
 
-  EXPECT_FALSE(result.has_value());
+  EXPECT_FALSE(fork_chain.has_value());
   EXPECT_EQ(node.chain.size(), 1u);
   EXPECT_EQ(*node.ledger.get_balance(alice.address), 1000u);
   EXPECT_EQ(node.mempool.size(), 0u);
@@ -344,8 +354,9 @@ TEST(NodeReorg, MultiHopOrphanForkAppliesLedgerInOldestToNewestOrder) {
   node.orphan_pool.add_orphan(Block(block1));
   node.orphan_pool.add_orphan(Block(block2));
 
-
-  auto result = node.try_reorg(block3);
+  auto fork_chain = build_fork_chain(node.chain, node.orphan_pool, block3);
+  ASSERT_TRUE(fork_chain.has_value());
+  auto result = node.try_reorg(std::move(*fork_chain));
 
   ASSERT_TRUE(result.has_value());
   ASSERT_EQ(result->size(), 3u);
@@ -364,14 +375,12 @@ TEST(NodeReorg, MultiHopOrphanForkAppliesLedgerInOldestToNewestOrder) {
   EXPECT_EQ(*node.ledger.get_balance(bob.address), 100u);
 }
 
-
 TEST(NodeReorg, ReorgFromForkPointDeeperThanGenesisPreservesCommonPrefix) {
   TestNode node;
   Wallet alice = make_wallet();
   Wallet bob = make_wallet();
   node.ledger.set_balance(alice.address, 1000);
   node.ledger.set_balance(bob.address, 0);
-
 
   Transaction common_tx1 = make_signed_tx(alice, bob.address, 10);
   Block common_block1 =
@@ -393,12 +402,14 @@ TEST(NodeReorg, ReorgFromForkPointDeeperThanGenesisPreservesCommonPrefix) {
   node.chain.add_block(Block(losing_tip));
   ASSERT_EQ(*node.ledger.get_balance(alice.address), 945u);
 
-
   Transaction winning_tx = make_signed_tx(alice, bob.address, 200);
   Block winning_candidate =
-      make_block(common_block2.hash_, 800, {winning_tx},3);
+      make_block(common_block2.hash_, 800, {winning_tx}, 3);
 
-  auto result = node.try_reorg(winning_candidate);
+  auto fork_chain =
+      build_fork_chain(node.chain, node.orphan_pool, winning_candidate);
+  ASSERT_TRUE(fork_chain.has_value());
+  auto result = node.try_reorg(std::move(*fork_chain));
   ASSERT_TRUE(result.has_value());
   ASSERT_EQ(result->size(), 1u);
   EXPECT_EQ((*result)[0], winning_candidate.hash_);
