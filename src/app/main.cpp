@@ -3,7 +3,6 @@
 #include "network/Bootstrap.hpp"
 #include "network/PeerAddress.hpp"
 #include <atomic>
-#include <charconv>
 #include <csignal>
 #include <cstddef>
 #include <cstdint>
@@ -16,8 +15,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <utility>
+#include "app/ParseNumber.hpp"
 namespace {
 forgechain::app::Orchestrator *g_orchestrator{nullptr};
 std::atomic<bool> g_shutting_down{false};
@@ -36,24 +35,13 @@ void handle_sigint(int) {
 void parse_args(std::span<char *> argv,
                 forgechain::app::OrchestratorConfig &config,
                 forgechain::crypto::str &file_bootstrap_path) {
-  auto parse_number = [](std::string_view str_number) -> std::optional<int> {
-    int number{0};
-
-    auto result = std::from_chars(
-        str_number.data(), str_number.data() + str_number.size(), number);
-    if (result.ec != std::errc{}) {
-      return std::nullopt;
-    }
-
-    return number;
-  };
   for (size_t i = 1; i < argv.size(); i++) {
     std::string_view view{argv[i]};
 
     if (((view == "--port") || (view == "-p")) && i + 1 < argv.size()) {
       ++i;
       std::string_view port_view{argv[i]};
-      auto port = parse_number(port_view);
+      auto port = forgechain::app::parse_number(port_view);
       if (!port.has_value()) {
         throw std::invalid_argument("invalid port");
       }
@@ -64,7 +52,7 @@ void parse_args(std::span<char *> argv,
       forgechain::network::PeerAddress address;
       address.host = std::string{argv[i + 1]};
       std::string_view port_view{argv[i + 2]};
-      auto connect_port = parse_number(port_view);
+      auto connect_port = forgechain::app::parse_number(port_view);
       if (!connect_port.has_value()) {
         throw std::invalid_argument("invalid connect port");
       }
@@ -76,7 +64,7 @@ void parse_args(std::span<char *> argv,
                i + 1 < argv.size()) {
       ++i;
       std::string_view seconds_view{argv[i]};
-      auto mine_every = parse_number(seconds_view);
+      auto mine_every = forgechain::app::parse_number(seconds_view);
       if (!mine_every.has_value()) {
         throw std::invalid_argument("invalid mine-every number");
       }
@@ -95,7 +83,7 @@ void parse_args(std::span<char *> argv,
                i + 1 < argv.size()) {
       ++i;
       std::string_view rpc_port_view{argv[i]};
-      auto rpc_port = parse_number(rpc_port_view);
+      auto rpc_port = forgechain::app::parse_number(rpc_port_view);
       if (!rpc_port.has_value()) {
         throw std::invalid_argument("invalid rpc port");
       }

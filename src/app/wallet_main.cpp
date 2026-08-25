@@ -13,6 +13,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include "app/ParseNumber.hpp"
 using namespace forgechain;
 
 struct Config {
@@ -20,17 +21,6 @@ struct Config {
   crypto::str keyfile_path;
 };
 
-auto parse_number = [](std::string_view str_number) -> std::optional<int> {
-  int number{0};
-
-  auto result = std::from_chars(str_number.data(),
-                                str_number.data() + str_number.size(), number);
-  if (result.ec != std::errc{}) {
-    return std::nullopt;
-  }
-
-  return number;
-};
 
 Config parse_args(std::span<char *> argv) {
 
@@ -41,7 +31,7 @@ Config parse_args(std::span<char *> argv) {
       network::PeerAddress address;
       address.host = std::string{argv[i + 1]};
       std::string_view port_view{argv[i + 2]};
-      auto connect_port = parse_number(port_view);
+      auto connect_port = app::parse_number(port_view);
       if (!connect_port.has_value()) {
         throw std::invalid_argument("invalid connect port");
       }
@@ -61,9 +51,6 @@ Config parse_args(std::span<char *> argv) {
   }
   if (config.keyfile_path.empty()) {
     throw std::invalid_argument("missing required --keyfile <path>");
-  }
-  if (config.address.host.empty() || config.address.port == 0) {
-    throw std::invalid_argument("missing required --connect <host> <port>");
   }
   return config;
 }
@@ -97,7 +84,34 @@ int main(int argc, char *argv[]) {
     iss >> command;
     if (command.empty())
       continue;
+    else if (command == "help") {
+        std::cout << "commands:" << std::endl;
+        std::cout << "  send <address> <amount>  sign and submit a transaction" << std::endl;
+        std::cout << "  balance                  show this wallet's balance" << std::endl;
+        std::cout << "  height                   show connected node's chain height" << std::endl;
+        std::cout << "  peers                    show connected node's peer count" << std::endl;
+        std::cout << "  connect <host> <port>    change which node's RPC port to talk to" << std::endl;
+        std::cout << "  help                     show this message" << std::endl;
+        std::cout << "  quit / exit              exit the wallet" << std::endl;
+    }
+    else if(command == "connect") {
+        crypto::str host{}, port{};
+        if(!(iss >> host >> port)) {
+            std::cerr << "usage: connect <host> <port>" << std::endl;
+            continue;
+        }
 
+        auto port_number = app::parse_number(port);
+        if(!port_number.has_value()) {
+            std::cerr << "invalid port: " << port << std::endl;
+                    continue;
+        }
+
+        config.address.host = std::move(host);
+        config.address.port = static_cast<uint16_t>(*port_number);
+        std::cout << "target set to " << config.address.host << ":"
+                       << config.address.port << std::endl;
+    }
     else if (command == "exit" || command == "quit") {
       break;
     } else if (command == "balance") {
@@ -114,7 +128,7 @@ int main(int argc, char *argv[]) {
         std::cerr << "usage: send <address> <amount>" << std::endl;
         continue;
       }
-      auto amount = parse_number(amount_str);
+      auto amount = app::parse_number(amount_str);
       if (!amount.has_value()) {
         std::cerr << "invalid amount: " << amount_str << std::endl;
         continue;
