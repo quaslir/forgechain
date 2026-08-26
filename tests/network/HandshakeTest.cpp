@@ -25,7 +25,7 @@ uint16_t next_test_port() {
 }  // namespace
 
 TEST(VersionSerialization, RoundTripPreservesAllFields) {
-    VersionInfo original{7, 12345, 1700000000ULL};
+    VersionInfo original{7, 12345, 1700000000ULL, 0};
 
     auto serialized = serialize_version(original);
     VersionInfo restored = deserialize_version(serialized);
@@ -36,13 +36,13 @@ TEST(VersionSerialization, RoundTripPreservesAllFields) {
 }
 
 TEST(VersionSerialization, ProducesExactlyTwentyBytes) {
-    VersionInfo info{1, 0, 0};
+    VersionInfo info{1, 0, 0, 8000};
     auto serialized = serialize_version(info);
-    EXPECT_EQ(serialized.size(), 20u);
+    EXPECT_EQ(serialized.size(), 22u);
 }
 
 TEST(VersionSerialization, RoundTripPreservesMaximumValues) {
-    VersionInfo edge{0xFFFFFFFF, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL};
+    VersionInfo edge{0xFFFFFFFF, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFF};
 
     auto serialized = serialize_version(edge);
     VersionInfo restored = deserialize_version(serialized);
@@ -50,10 +50,11 @@ TEST(VersionSerialization, RoundTripPreservesMaximumValues) {
     EXPECT_EQ(restored.protocol_version, edge.protocol_version);
     EXPECT_EQ(restored.chain_height, edge.chain_height);
     EXPECT_EQ(restored.timestamp, edge.timestamp);
+    EXPECT_EQ(restored.listen_port, edge.listen_port);
 }
 
 TEST(VersionSerialization, RoundTripPreservesZeroValues) {
-    VersionInfo zero{0, 0, 0};
+    VersionInfo zero{0, 0, 0, 0};
 
     auto serialized = serialize_version(zero);
     VersionInfo restored = deserialize_version(serialized);
@@ -61,10 +62,11 @@ TEST(VersionSerialization, RoundTripPreservesZeroValues) {
     EXPECT_EQ(restored.protocol_version, 0u);
     EXPECT_EQ(restored.chain_height, 0u);
     EXPECT_EQ(restored.timestamp, 0u);
+    EXPECT_EQ(restored.listen_port, 0u);
 }
 
 TEST(VersionSerialization, FieldsAreInDocumentedOrder) {
-    VersionInfo info{1, 42, 1700000000ULL};
+    VersionInfo info{1, 42, 1700000000ULL, 9000};
     auto serialized = serialize_version(info);
 
     uint32_t first_field;
@@ -77,7 +79,11 @@ TEST(VersionSerialization, FieldsAreInDocumentedOrder) {
 
     uint64_t third_field;
     std::memcpy(&third_field, serialized.data() + 12, sizeof(third_field));
-    EXPECT_EQ(third_field, 1700000000ULL) << "last 8 bytes must be timestamp";
+    EXPECT_EQ(third_field, 1700000000ULL) << "next 8 bytes must be timestamp";
+
+    uint16_t fourth_field;
+    std::memcpy(&fourth_field, serialized.data() + 20, sizeof(fourth_field));
+    EXPECT_EQ(fourth_field, 9000u) << "last 2 bytes must be listen_port";
 }
 
 TEST(Handshake, BothSidesReceiveEachOthersVersionInfo) {
@@ -85,8 +91,8 @@ TEST(Handshake, BothSidesReceiveEachOthersVersionInfo) {
     TcpSocket server = listen_on(port);
     ASSERT_TRUE(server.is_valid());
 
-    VersionInfo server_info{1, 100, 1700000000ULL};
-    VersionInfo client_info{1, 50, 1700000100ULL};
+    VersionInfo server_info{1, 100, 1700000000ULL, port};
+    VersionInfo client_info{1, 50, 1700000100ULL, 0};
 
     std::optional<VersionInfo> client_received_from_server;
     std::thread client_thread([&]() {
@@ -119,8 +125,8 @@ TEST(Handshake, DifferentChainHeightsAreCorrectlyDistinguishable) {
     TcpSocket server = listen_on(port);
     ASSERT_TRUE(server.is_valid());
 
-    VersionInfo server_info{1, 500, 1700000000ULL};
-    VersionInfo client_info{1, 10, 1700000000ULL};
+    VersionInfo server_info{1, 500, 1700000000ULL, 0};
+    VersionInfo client_info{1, 10, 1700000000ULL, 0};
 
     std::optional<VersionInfo> client_view_of_server;
     std::thread client_thread([&]() {
@@ -156,7 +162,7 @@ TEST(Handshake, WrongFirstMessageTypeIsRejected) {
     });
 
     TcpSocket accepted = accept_connection(server);
-    VersionInfo server_info{1, 0, 1700000000ULL};
+    VersionInfo server_info{1, 0, 1700000000ULL, 0};
     std::optional<VersionInfo> result = perform_handshake(accepted.fd(), server_info);
 
     client_thread.join();
@@ -182,7 +188,7 @@ TEST(Handshake, TruncatedVersionPayloadIsRejectedNotCrashed) {
     });
 
     TcpSocket accepted = accept_connection(server);
-    VersionInfo server_info{1, 0, 1700000000ULL};
+    VersionInfo server_info{1, 0, 1700000000ULL, 0};
 
     std::optional<VersionInfo> result;
     EXPECT_NO_THROW({ result = perform_handshake(accepted.fd(), server_info); });
@@ -211,7 +217,7 @@ TEST(Handshake, OversizedVersionPayloadIsRejected) {
     });
 
     TcpSocket accepted = accept_connection(server);
-    VersionInfo server_info{1, 0, 1700000000ULL};
+    VersionInfo server_info{1, 0, 1700000000ULL, 0};
     std::optional<VersionInfo> result = perform_handshake(accepted.fd(), server_info);
 
     client_thread.join();
@@ -231,7 +237,7 @@ TEST(Handshake, ConnectionClosedByPeerBeforeRespondingFailsGracefully) {
     });
 
     TcpSocket accepted = accept_connection(server);
-    VersionInfo server_info{1, 0, 1700000000ULL};
+    VersionInfo server_info{1, 0, 1700000000ULL, 0};
 
     std::optional<VersionInfo> result;
     EXPECT_NO_THROW({ result = perform_handshake(accepted.fd(), server_info); });
@@ -259,7 +265,7 @@ TEST(Handshake, EmptyVersionPayloadIsRejected) {
     });
 
     TcpSocket accepted = accept_connection(server);
-    VersionInfo server_info{1, 0, 1700000000ULL};
+    VersionInfo server_info{1, 0, 1700000000ULL, 0};
     std::optional<VersionInfo> result = perform_handshake(accepted.fd(), server_info);
 
     client_thread.join();

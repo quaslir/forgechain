@@ -233,10 +233,11 @@ void Node::handle_getdata(Peer *peer, const crypto::bytes &payload) {
       if (block_container.has_value()) {
         send_msg(peer, MessageType::BLOCK, block_container->serialize());
       } else {
-          auto block_container_in_orphan = orphan_pool_.find_orphan(item.hash);
-          if(block_container_in_orphan.has_value()) {
-              send_msg(peer, MessageType::BLOCK, block_container_in_orphan->serialize());
-          }
+        auto block_container_in_orphan = orphan_pool_.find_orphan(item.hash);
+        if (block_container_in_orphan.has_value()) {
+          send_msg(peer, MessageType::BLOCK,
+                   block_container_in_orphan->serialize());
+        }
       }
     }
 
@@ -285,22 +286,23 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
     orphan_pool_.add_orphan(std::move(*block_container));
     auto fork_chain =
         core::build_fork_chain(blockchain_, orphan_pool_, fork_candidate_block);
-    if(!fork_chain.has_value()) {
-        InventoryItem item{.type = InventoryItemType::BLOCK, .hash = fork_candidate_block.prev_hash_};
-        std::vector<InventoryItem> items{item};
-        if(peer) {
-            send_msg(peer, MessageType::GETDATA, serialize_inventory(items));
-        }
-    } else {
-    auto reorg_hashes = try_reorg(std::move(*fork_chain));
-    chain_lock.unlock();
-    orphan_lock.unlock();
-
-    if (reorg_hashes.has_value()) {
-      for (const auto &reorg_hash : *reorg_hashes) {
-        broadcast_inv(peer, InventoryItemType::BLOCK, reorg_hash);
+    if (!fork_chain.has_value()) {
+      InventoryItem item{.type = InventoryItemType::BLOCK,
+                         .hash = fork_candidate_block.prev_hash_};
+      std::vector<InventoryItem> items{item};
+      if (peer) {
+        send_msg(peer, MessageType::GETDATA, serialize_inventory(items));
       }
-    }
+    } else {
+      auto reorg_hashes = try_reorg(std::move(*fork_chain));
+      chain_lock.unlock();
+      orphan_lock.unlock();
+
+      if (reorg_hashes.has_value()) {
+        for (const auto &reorg_hash : *reorg_hashes) {
+          broadcast_inv(peer, InventoryItemType::BLOCK, reorg_hash);
+        }
+      }
     }
     break;
   }
@@ -337,7 +339,7 @@ void Node::handle_getblocks(Peer *peer, const crypto::bytes &payload) {
 void Node::handle_ping(Peer *peer) { send_msg(peer, MessageType::PONG, {}); }
 void Node::handle_pong() {}
 std::optional<std::vector<crypto::HashBytes>>
-Node::try_reorg(core::ForkChain && fork_chain) {
+Node::try_reorg(core::ForkChain &&fork_chain) {
 
   if (!core::is_fork_heavier(blockchain_, fork_chain))
     return std::nullopt;
@@ -438,8 +440,8 @@ Node::transactions_for_block(size_t limit) const {
 }
 
 std::vector<core::Transaction> Node::mempool_snapshot() const {
-    std::lock_guard<std::mutex> chain_lock(chain_mutex_);
-    return mempool_.get_transactions_for_block(mempool_.size());
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  return mempool_.get_transactions_for_block(mempool_.size());
 }
 
 void Node::set_balance(const crypto::str &address, uint64_t amount) {

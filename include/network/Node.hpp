@@ -76,7 +76,7 @@ private:
   [[nodiscard]] bool apply_block_to_ledger(const core::Block &block);
 
   std::optional<std::vector<crypto::HashBytes>>
-  try_reorg(core::ForkChain && fork_chain);
+  try_reorg(core::ForkChain &&fork_chain);
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};

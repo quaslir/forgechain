@@ -1,8 +1,10 @@
 #include "network/TcpSocket.hpp"
 #include "crypto/CommonTypes.hpp"
 #include <arpa/inet.h>
+#include <array>
 #include <cstdint>
 #include <netinet/in.h>
+#include <optional>
 #include <sys/socket.h>
 #include <unistd.h>
 namespace forgechain::network {
@@ -88,5 +90,21 @@ TcpSocket connect_to(const crypto::str &host, uint16_t port) {
 
   return TcpSocket{fd};
 }
+std::optional<crypto::str> get_peer_ip(int fd) {
+  if (fd < 0)
+    return std::nullopt;
+  sockaddr_in address{};
+  socklen_t address_length = sizeof(address);
+  int result =
+      getpeername(fd, reinterpret_cast<sockaddr *>(&address), &address_length);
+  if (result < 0) {
+    return std::nullopt;
+  }
 
+  std::array<char, INET_ADDRSTRLEN> buffer;
+  if (!inet_ntop(AF_INET, &address.sin_addr, buffer.data(), buffer.size()))
+    return std::nullopt;
+
+  return crypto::str(buffer.data());
+}
 } // namespace forgechain::network

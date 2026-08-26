@@ -22,6 +22,9 @@ crypto::bytes serialize_version(const VersionInfo &info) {
              reinterpret_cast<const uint8_t *>(&info.timestamp) +
                  sizeof(info.timestamp));
 
+  out.insert(out.end(), reinterpret_cast<const uint8_t *>(&info.listen_port),
+             reinterpret_cast<const uint8_t *>(&info.listen_port) +
+                 sizeof(info.listen_port));
   return out;
 }
 VersionInfo deserialize_version(const crypto::bytes &payload) {
@@ -33,6 +36,9 @@ VersionInfo deserialize_version(const crypto::bytes &payload) {
       payload.data() + sizeof(info.protocol_version) +
       sizeof(info.chain_height));
 
+  info.listen_port = *reinterpret_cast<const uint16_t *>(
+      payload.data() + sizeof(info.protocol_version) +
+      sizeof(info.chain_height) + sizeof(info.timestamp));
   return info;
 }
 std::optional<VersionInfo> perform_handshake(int fd, const VersionInfo &info) {

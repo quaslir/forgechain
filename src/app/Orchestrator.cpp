@@ -21,8 +21,12 @@ namespace forgechain::app {
 
 Orchestrator::Orchestrator(OrchestratorConfig config)
     : config_(std::move(config)), log_(config_.node_name),
-      node_(config_.listen_port, network::VersionInfo{}, chain_, mempool_,
-            orphan_pool_, ledger_) {}
+      node_(config_.listen_port,
+            network::VersionInfo{.protocol_version = 1,
+                                 .chain_height = 0,
+                                 .timestamp = 0,
+                                 .listen_port = config_.listen_port},
+            chain_, mempool_, orphan_pool_, ledger_) {}
 
 bool Orchestrator::start() {
   if (!node_.start())
@@ -115,47 +119,42 @@ void Orchestrator::run_command_loop() {
 
     else if (command == "peers") {
       handle_peers_command();
-    }
-    else if(command == "status") {
-        handle_status_command();
-    }
-    else if(command == "set") {
-        crypto::str subcommand{};
-        iss >> subcommand;
-        if(subcommand == "reward-address") {
-            crypto::str address{};
-            iss >> address;
-            if(address.empty()) {
-                std::cerr << "usage: set reward-address <address>" << std::endl;
-                continue;
-            }
-            handle_set_reward_address(address);
-        } else {
-            std::cerr << "usage: set reward-address <address>" << std::endl;
+    } else if (command == "status") {
+      handle_status_command();
+    } else if (command == "set") {
+      crypto::str subcommand{};
+      iss >> subcommand;
+      if (subcommand == "reward-address") {
+        crypto::str address{};
+        iss >> address;
+        if (address.empty()) {
+          std::cerr << "usage: set reward-address <address>" << std::endl;
+          continue;
         }
-    }
-    else if(command == "connect") {
-        crypto::str host{}, port{};
-        if(!(iss >> host >> port)) {
-            std::cerr << "usage: connect <host> <port>" << std::endl;
-                    continue;
-        }
+        handle_set_reward_address(address);
+      } else {
+        std::cerr << "usage: set reward-address <address>" << std::endl;
+      }
+    } else if (command == "connect") {
+      crypto::str host{}, port{};
+      if (!(iss >> host >> port)) {
+        std::cerr << "usage: connect <host> <port>" << std::endl;
+        continue;
+      }
 
-        auto port_number = app::parse_number(port);
+      auto port_number = app::parse_number(port);
 
-        if(!port_number.has_value()) {
-            std::cerr << "invalid port: " << port << std::endl;
-                    continue;
-        }
+      if (!port_number.has_value()) {
+        std::cerr << "invalid port: " << port << std::endl;
+        continue;
+      }
 
-        handle_connect_to_peer(host, static_cast<uint16_t>(*port_number));
-    } else if(command == "mempool") {
-        handle_mempool_command();
-    }
-    else if(command == "help") {
-        handle_help_command();
-    }
-    else if (command == "quit" || command == "exit") {
+      handle_connect_to_peer(host, static_cast<uint16_t>(*port_number));
+    } else if (command == "mempool") {
+      handle_mempool_command();
+    } else if (command == "help") {
+      handle_help_command();
+    } else if (command == "quit" || command == "exit") {
       break;
     } else {
       std::cout << "unknown command" << std::endl;
@@ -179,65 +178,73 @@ void Orchestrator::handle_peers_command() {
   std::cout << node_.peer_count() << std::endl;
 }
 void Orchestrator::handle_status_command() {
-    std::cout << "port: " << config_.listen_port << std::endl;
+  std::cout << "port: " << config_.listen_port << std::endl;
 
-    if(config_.rpc_port > 0) {
-        std::cout << "rpc: active on port " << config_.rpc_port << std::endl;
-    } else {
-        std::cout << "rpc: disabled" << std::endl;
-    }
+  if (config_.rpc_port > 0) {
+    std::cout << "rpc: active on port " << config_.rpc_port << std::endl;
+  } else {
+    std::cout << "rpc: disabled" << std::endl;
+  }
 
-    if(config_.mine_every_seconds > 0) {
-        std::cout << "mining: active, every " << config_.mine_every_seconds
-                       << "s" << std::endl;
+  if (config_.mine_every_seconds > 0) {
+    std::cout << "mining: active, every " << config_.mine_every_seconds << "s"
+              << std::endl;
 
-    if(!config_.reward_address.empty()) {
-        std::cout << "reward address: " << config_.reward_address << std::endl;
+    if (!config_.reward_address.empty()) {
+      std::cout << "reward address: " << config_.reward_address << std::endl;
     } else {
-        std::cout << "reward address: none (mined blocks have no coinbase)"
-                         << std::endl;
+      std::cout << "reward address: none (mined blocks have no coinbase)"
+                << std::endl;
     }
-    } else {
-         std::cout << "mining: disabled" << std::endl;
-    }
+  } else {
+    std::cout << "mining: disabled" << std::endl;
+  }
 }
 
-void Orchestrator::handle_set_reward_address(const crypto::str& address) {
-    std::lock_guard<std::mutex> state_lock(state_mutex_);
-    config_.reward_address = address;
-    std::cout << "reward address set to " << address << std::endl;
+void Orchestrator::handle_set_reward_address(const crypto::str &address) {
+  std::lock_guard<std::mutex> state_lock(state_mutex_);
+  config_.reward_address = address;
+  std::cout << "reward address set to " << address << std::endl;
 }
 void Orchestrator::handle_help_command() {
   std::cout << "commands:" << std::endl;
-  std::cout << "  balance <address>        show Ledger balance for address" << std::endl;
-  std::cout << "  height                    show current chain height" << std::endl;
-  std::cout << "  peers                     show connected peer count" << std::endl;
-  std::cout << "  mempool                   show pending transactions in mempool" << std::endl;
-  std::cout << "  status                    show node configuration" << std::endl;
-  std::cout << "  set reward-address <addr> change mining reward address" << std::endl;
+  std::cout << "  balance <address>        show Ledger balance for address"
+            << std::endl;
+  std::cout << "  height                    show current chain height"
+            << std::endl;
+  std::cout << "  peers                     show connected peer count"
+            << std::endl;
+  std::cout
+      << "  mempool                   show pending transactions in mempool"
+      << std::endl;
+  std::cout << "  status                    show node configuration"
+            << std::endl;
+  std::cout << "  set reward-address <addr> change mining reward address"
+            << std::endl;
   std::cout << "  connect <host> <port>     connect to a peer" << std::endl;
   std::cout << "  help                      show this message" << std::endl;
   std::cout << "  quit / exit               shut down the node" << std::endl;
 }
 
-void Orchestrator::handle_connect_to_peer(const crypto::str& host, uint16_t port) {
-    if (node_.connect_to_peer(host, port)) {
-            std::cout << "connected to " << host << ":" << port << std::endl;
-        } else {
-            std::cout << "failed to connect to " << host << ":" << port << std::endl;
-        }
+void Orchestrator::handle_connect_to_peer(const crypto::str &host,
+                                          uint16_t port) {
+  if (node_.connect_to_peer(host, port)) {
+    std::cout << "connected to " << host << ":" << port << std::endl;
+  } else {
+    std::cout << "failed to connect to " << host << ":" << port << std::endl;
+  }
 }
 void Orchestrator::handle_mempool_command() {
-auto txs = node_.mempool_snapshot();
-if(txs.empty()) {
+  auto txs = node_.mempool_snapshot();
+  if (txs.empty()) {
     std::cout << "(mempool is empty)" << std::endl;
-        return;
-}
-std::cout << txs.size() << " transaction(s):" << std::endl;
-for(const auto&tx :txs ) {
+    return;
+  }
+  std::cout << txs.size() << " transaction(s):" << std::endl;
+  for (const auto &tx : txs) {
     std::cout << "  " << tx.sender_ << " -> " << tx.recipient_ << " : "
-                   << tx.amount_ << std::endl;
-}
+              << tx.amount_ << std::endl;
+  }
 }
 void Orchestrator::stop() {
   running_.store(false);
