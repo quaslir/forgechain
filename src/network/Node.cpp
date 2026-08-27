@@ -13,6 +13,7 @@
 #include "network/Inventory.hpp"
 #include "network/Message.hpp"
 #include "network/Peer.hpp"
+#include "network/PeerAddress.hpp"
 #include "network/TcpSocket.hpp"
 #include <cstddef>
 #include <cstdint>
@@ -78,6 +79,10 @@ void Node::peer_loop(Peer *peer) {
     case MessageType::PONG:
       handle_pong();
       break;
+    case MessageType::PEERS:
+
+      handle_peers(msg.payload);
+      break;
     default:
       break;
     }
@@ -123,7 +128,8 @@ void Node::ping_loop() {
   }
 }
 
-bool Node::register_new_peer(TcpSocket &&socket) {
+bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
+                             bool is_outbound) {
   if (!socket.is_valid())
     return false;
   socket.set_receive_timeout(5);
@@ -136,7 +142,8 @@ bool Node::register_new_peer(TcpSocket &&socket) {
   auto incoming_info = perform_handshake(socket.fd(), current_info);
   if (!incoming_info.has_value())
     return false;
-  auto peer = std::make_unique<Peer>(std::move(socket), *incoming_info);
+
+  auto peer = std::make_shared<Peer>(std::move(socket), *incoming_info, host);
   Peer *raw_peer = peer.get();
 
   // sync between two peers
@@ -145,20 +152,87 @@ bool Node::register_new_peer(TcpSocket &&socket) {
                   serialize_getblocks(my_height)))
       return false;
   }
+  std::vector<PeerAddress> addresses;
+  std::vector<PeerAddress> new_peer_address{
+      PeerAddress{.host = host, .port = incoming_info->listen_port}};
+  crypto::bytes payload = serialize_peer_list(new_peer_address);
+  std::vector<std::shared_ptr<Peer>> to_send;
+  size_t peer_index{0};
+  std::thread old_worker;
+  {
+    std::lock_guard<std::mutex> peers_lock(peers_mutex_);
+    bool duplicate_found{false};
+    for (size_t i = 0; i < peers_.size(); i++) {
+      if (incoming_info->listen_port != 0 &&
+          peers_[i].peer->remote_version().listen_port != 0 &&
+          peers_[i].peer->host() == host &&
+          peers_[i].peer->remote_version().listen_port ==
+              incoming_info->listen_port) {
+        if (info_.node_id < incoming_info->node_id) {
+          if (is_outbound) {
+            old_worker = std::move(peers_[i].worker);
+            peers_[i].peer->mark_dead();
+            peers_[i].peer = std::move(peer);
+            peer_index = i;
+            duplicate_found = true;
+            break;
+          } else {
+            return false;
+          }
+        } else {
+          if (is_outbound) {
+            return false;
+          } else {
+            old_worker = std::move(peers_[i].worker);
+            peers_[i].peer->mark_dead();
+            peers_[i].peer = std::move(peer);
+            peer_index = i;
+            duplicate_found = true;
+            break;
+          }
+        }
+      }
+    }
 
+    if (!duplicate_found) {
+      addresses.reserve(peers_.size());
+      for (const auto &my_peer : peers_) {
+        to_send.push_back(my_peer.peer);
+        addresses.push_back(
+            PeerAddress{.host = my_peer.peer->host(),
+                        .port = my_peer.peer->remote_version().listen_port});
+      }
+      peers_.push_back(
+          PeerEntry{.peer = std::move(peer), .worker = std::thread{}});
+      peer_index = peers_.size() - 1;
+    }
+  }
+
+  if (old_worker.joinable()) {
+    old_worker.join();
+  }
+
+  send_msg(raw_peer, MessageType::PEERS, serialize_peer_list(addresses));
   std::thread worker{&Node::peer_loop, this, raw_peer};
   {
     std::lock_guard<std::mutex> peers_lock(peers_mutex_);
-    peers_.push_back(
-        PeerEntry{.peer = std::move(peer), .worker = std::move(worker)});
+    peers_[peer_index].worker = std::move(worker);
   }
 
+  for (const auto &peer_to_send : to_send) {
+    send_msg(peer_to_send.get(), MessageType::PEERS, payload);
+  }
   return true;
 }
 
 bool Node::accept_one_peer() {
   TcpSocket socket = accept_connection(listener_);
-  return register_new_peer(std::move(socket));
+  auto host = get_peer_ip(socket.fd());
+  if (!host.has_value()) {
+    return false;
+  }
+
+  return register_new_peer(std::move(socket), *host, false);
 }
 
 bool Node::connect_to_peer(const crypto::str &host, uint16_t port) {
@@ -168,7 +242,7 @@ bool Node::connect_to_peer(const crypto::str &host, uint16_t port) {
   }
   TcpSocket socket = connect_to(host, port);
 
-  return register_new_peer(std::move(socket));
+  return register_new_peer(std::move(socket), host, true);
 }
 
 [[nodiscard]] size_t Node::peer_count() const {
@@ -233,10 +307,11 @@ void Node::handle_getdata(Peer *peer, const crypto::bytes &payload) {
       if (block_container.has_value()) {
         send_msg(peer, MessageType::BLOCK, block_container->serialize());
       } else {
-          auto block_container_in_orphan = orphan_pool_.find_orphan(item.hash);
-          if(block_container_in_orphan.has_value()) {
-              send_msg(peer, MessageType::BLOCK, block_container_in_orphan->serialize());
-          }
+        auto block_container_in_orphan = orphan_pool_.find_orphan(item.hash);
+        if (block_container_in_orphan.has_value()) {
+          send_msg(peer, MessageType::BLOCK,
+                   block_container_in_orphan->serialize());
+        }
       }
     }
 
@@ -285,22 +360,23 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
     orphan_pool_.add_orphan(std::move(*block_container));
     auto fork_chain =
         core::build_fork_chain(blockchain_, orphan_pool_, fork_candidate_block);
-    if(!fork_chain.has_value()) {
-        InventoryItem item{.type = InventoryItemType::BLOCK, .hash = fork_candidate_block.prev_hash_};
-        std::vector<InventoryItem> items{item};
-        if(peer) {
-            send_msg(peer, MessageType::GETDATA, serialize_inventory(items));
-        }
-    } else {
-    auto reorg_hashes = try_reorg(std::move(*fork_chain));
-    chain_lock.unlock();
-    orphan_lock.unlock();
-
-    if (reorg_hashes.has_value()) {
-      for (const auto &reorg_hash : *reorg_hashes) {
-        broadcast_inv(peer, InventoryItemType::BLOCK, reorg_hash);
+    if (!fork_chain.has_value()) {
+      InventoryItem item{.type = InventoryItemType::BLOCK,
+                         .hash = fork_candidate_block.prev_hash_};
+      std::vector<InventoryItem> items{item};
+      if (peer) {
+        send_msg(peer, MessageType::GETDATA, serialize_inventory(items));
       }
-    }
+    } else {
+      auto reorg_hashes = try_reorg(std::move(*fork_chain));
+      chain_lock.unlock();
+      orphan_lock.unlock();
+
+      if (reorg_hashes.has_value()) {
+        for (const auto &reorg_hash : *reorg_hashes) {
+          broadcast_inv(peer, InventoryItemType::BLOCK, reorg_hash);
+        }
+      }
     }
     break;
   }
@@ -336,8 +412,19 @@ void Node::handle_getblocks(Peer *peer, const crypto::bytes &payload) {
 
 void Node::handle_ping(Peer *peer) { send_msg(peer, MessageType::PONG, {}); }
 void Node::handle_pong() {}
+
+void Node::handle_peers(const crypto::bytes &payload) {
+  auto list = deserialize_peer_list(payload);
+  if (!list.has_value())
+    return;
+
+  for (const auto &new_peer : *list) {
+    connect_to_peer(new_peer.host, new_peer.port);
+  }
+}
+
 std::optional<std::vector<crypto::HashBytes>>
-Node::try_reorg(core::ForkChain && fork_chain) {
+Node::try_reorg(core::ForkChain &&fork_chain) {
 
   if (!core::is_fork_heavier(blockchain_, fork_chain))
     return std::nullopt;
@@ -438,8 +525,8 @@ Node::transactions_for_block(size_t limit) const {
 }
 
 std::vector<core::Transaction> Node::mempool_snapshot() const {
-    std::lock_guard<std::mutex> chain_lock(chain_mutex_);
-    return mempool_.get_transactions_for_block(mempool_.size());
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  return mempool_.get_transactions_for_block(mempool_.size());
 }
 
 void Node::set_balance(const crypto::str &address, uint64_t amount) {

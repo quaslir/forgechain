@@ -1,4 +1,5 @@
 #include "app/Orchestrator.hpp"
+#include "app/ParseNumber.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "network/Bootstrap.hpp"
 #include "network/PeerAddress.hpp"
@@ -16,7 +17,6 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include "app/ParseNumber.hpp"
 namespace {
 forgechain::app::Orchestrator *g_orchestrator{nullptr};
 std::atomic<bool> g_shutting_down{false};

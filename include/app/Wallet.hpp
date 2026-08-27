@@ -20,6 +20,7 @@ public:
                                                   uint16_t port) const;
   [[nodiscard]] std::optional<crypto::str> peers(const crypto::str &host,
                                                  uint16_t port) const;
+
 private:
   static crypto::str read_from(network::TcpSocket socket);
   [[nodiscard]] bool load_from_file(std::ifstream &file);

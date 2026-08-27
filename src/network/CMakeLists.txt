@@ -9,6 +9,8 @@ Inventory.cpp
 GetBlocks.cpp
 Heartbeat.cpp
 Bootstrap.cpp
+PeerAddress.cpp
+NodeId.cpp
 )
 
 target_include_directories(network PUBLIC

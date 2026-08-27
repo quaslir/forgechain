@@ -3,6 +3,7 @@
 #include "crypto/CommonTypes.hpp"
 #include <atomic>
 #include <cstdint>
+#include <optional>
 namespace forgechain::network {
 class TcpSocket {
 public:
@@ -26,4 +27,5 @@ private:
 TcpSocket listen_on(uint16_t port);
 TcpSocket accept_connection(const TcpSocket &listener);
 TcpSocket connect_to(const crypto::str &host, uint16_t port);
+std::optional<crypto::str> get_peer_ip(int fd);
 } // namespace forgechain::network

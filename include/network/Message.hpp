@@ -16,7 +16,8 @@ enum class MessageType : uint8_t {
   TX = 0x04,
   GETBLOCKS = 0x05,
   PING = 0x06,
-  PONG = 0x07
+  PONG = 0x07,
+  PEERS = 0x08
 };
 
 struct Message {

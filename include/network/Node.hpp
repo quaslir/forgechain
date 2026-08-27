@@ -25,7 +25,7 @@
 namespace forgechain::network {
 
 struct PeerEntry {
-  std::unique_ptr<Peer> peer;
+  std::shared_ptr<Peer> peer;
   std::thread worker;
 };
 using VectorPeers = std::vector<PeerEntry>;
@@ -63,7 +63,8 @@ private:
   void ping_loop();
   bool send_msg(Peer *peer, MessageType type, const crypto::bytes &payload);
 
-  bool register_new_peer(TcpSocket &&socket);
+  bool register_new_peer(TcpSocket &&socket, const crypto::str &host,
+                         bool is_outbound);
   void broadcast_inv(Peer *exclude, InventoryItemType type,
                      const crypto::HashBytes &hash);
   void handle_inv(Peer *peer, const crypto::bytes &payload);
@@ -73,10 +74,11 @@ private:
   void handle_getblocks(Peer *peer, const crypto::bytes &payload);
   void handle_ping(Peer *peer);
   void handle_pong();
+  void handle_peers(const crypto::bytes &payload);
   [[nodiscard]] bool apply_block_to_ledger(const core::Block &block);
 
   std::optional<std::vector<crypto::HashBytes>>
-  try_reorg(core::ForkChain && fork_chain);
+  try_reorg(core::ForkChain &&fork_chain);
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};
