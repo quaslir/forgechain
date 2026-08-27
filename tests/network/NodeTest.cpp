@@ -52,7 +52,7 @@ struct TestNode : Node {
     Ledger ledger;
 
     TestNode(uint16_t port, VersionInfo info)
-        : Node(port, info, chain, mempool, orphan_pool, ledger) {}
+        : Node(port, info, chain, mempool, orphan_pool, ledger), mempool(1000) {}
 };
 
 ::testing::AssertionResult RunWithTimeout(std::chrono::milliseconds timeout,

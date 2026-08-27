@@ -336,7 +336,7 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
   crypto::HashBytes hash = block_container->hash_;
   if (!consensus::meets_target(hash, block_container->difficulty_))
     return;
-
+  if(!consensus::validate_coinbase_amount(block_container->transactions_)) return;
   core::BlockValidation block_status;
   {
     std::lock_guard<std::mutex> lock(chain_mutex_);

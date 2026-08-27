@@ -22,7 +22,7 @@ struct Transaction {
   [[nodiscard]] static std::optional<Transaction>
   deserialize(const crypto::bytes &payload);
   [[nodiscard]] crypto::HashBytes compute_hash() const;
-  bool operator==(const Transaction &tx);
+  bool operator==(const Transaction &tx) const;
 };
 
 } // namespace forgechain::core

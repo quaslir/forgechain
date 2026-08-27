@@ -275,3 +275,73 @@ TEST(Ledger, CoinbaseAndRegularTransactionsPreserveExpectedTotalSupply) {
 
     EXPECT_EQ(total, 100u);
 }
+
+TEST(Ledger, ApplyTransactionDebitsSenderByAmountPlusFee) {
+    Ledger ledger;
+    ledger.set_balance("alice", 1000);
+    ledger.set_balance("bob", 0);
+
+    Transaction tx("alice", "bob", 100, {}, 5);
+    EXPECT_TRUE(ledger.apply_transaction(tx));
+
+    EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(895));
+    EXPECT_EQ(ledger.get_balance("bob"), std::optional<uint64_t>(100));
+}
+
+TEST(Ledger, RecipientNeverReceivesTheFeePortion) {
+    Ledger ledger;
+    ledger.set_balance("alice", 1000);
+    ledger.set_balance("bob", 0);
+
+    Transaction tx("alice", "bob", 100, {}, 50);
+    EXPECT_TRUE(ledger.apply_transaction(tx));
+
+    EXPECT_EQ(ledger.get_balance("bob"), std::optional<uint64_t>(100));
+}
+
+TEST(Ledger, InsufficientBalanceForAmountPlusFeeIsRejected) {
+    Ledger ledger;
+    ledger.set_balance("alice", 100);
+    ledger.set_balance("bob", 0);
+
+    Transaction tx("alice", "bob", 90, {}, 20);
+    EXPECT_FALSE(ledger.apply_transaction(tx));
+
+    EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(100));
+    EXPECT_EQ(ledger.get_balance("bob"), std::optional<uint64_t>(0));
+}
+
+TEST(Ledger, ExactBalanceCoveringAmountPlusFeeSucceeds) {
+    Ledger ledger;
+    ledger.set_balance("alice", 100);
+    ledger.set_balance("bob", 0);
+    Transaction tx("alice", "bob", 80, {}, 20);
+    EXPECT_TRUE(ledger.apply_transaction(tx));
+
+    EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(0));
+    EXPECT_EQ(ledger.get_balance("bob"), std::optional<uint64_t>(80));
+}
+
+TEST(Ledger, ReverseTransactionRefundsAmountPlusFeeToSender) {
+    Ledger ledger;
+    ledger.set_balance("alice", 1000);
+    ledger.set_balance("bob", 0);
+
+    Transaction tx("alice", "bob", 100, {}, 5);
+    ASSERT_TRUE(ledger.apply_transaction(tx));
+    ASSERT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(895));
+
+    ASSERT_TRUE(ledger.reverse_transaction(tx));
+
+    EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(1000));
+    EXPECT_EQ(ledger.get_balance("bob"), std::optional<uint64_t>(0));
+}
+
+TEST(Ledger, CoinbaseWithNonZeroFeeDoesNotAffectSenderBalanceOnApply) {
+    Ledger ledger;
+
+    Transaction coinbase(kCoinbaseSender, "alice", 50, {}, 7);
+    EXPECT_TRUE(ledger.apply_transaction(coinbase));
+    EXPECT_EQ(ledger.get_balance(kCoinbaseSender), std::nullopt);
+    EXPECT_EQ(ledger.get_balance("alice"), std::optional<uint64_t>(50));
+}

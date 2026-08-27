@@ -129,7 +129,7 @@ Transaction::deserialize(const crypto::bytes &payload) {
 crypto::HashBytes Transaction::compute_hash() const {
   return crypto::double_sha_256(serialize_for_signing());
 }
-bool Transaction::operator==(const Transaction &tx) {
+bool Transaction::operator==(const Transaction &tx) const {
   return sender_ == tx.sender_ && recipient_ == tx.recipient_ &&
          amount_ == tx.amount_ && signature_ == tx.signature_ && fee_ == tx.fee_;
 }

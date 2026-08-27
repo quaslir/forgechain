@@ -71,7 +71,7 @@ crypto::str Wallet::read_from(network::TcpSocket socket) {
 
 std::optional<bool> Wallet::send(const crypto::str &recipient, uint64_t amount,
                                  const crypto::str &host, uint16_t port) const {
-  core::Transaction tx{address_, recipient, amount, keys_.public_key};
+  core::Transaction tx{address_, recipient, amount, keys_.public_key, 0};
   tx.signature_ = crypto::sign(tx.serialize_for_signing(), keys_.private_key);
   network::TcpSocket socket = network::connect_to(host, port);
   if (!socket.is_valid())

@@ -2,7 +2,6 @@
 #include "app/ParseNumber.hpp"
 #include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
-#include "core/Blockchain.hpp"
 #include "core/Mempool.hpp"
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
@@ -85,7 +84,7 @@ void Orchestrator::mining_loop() {
             fees_total += tx.fee_;
         }
       core::Transaction coinbase{core::kCoinbaseSender, config_.reward_address,
-                                 OrchestratorConfig::mining_reward + fees_total,
+                                 consensus::mining_reward + fees_total,
                                  crypto::bytes{}, 0};
       txs_for_block.insert(txs_for_block.begin(), coinbase);
     }

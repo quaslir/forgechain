@@ -38,7 +38,7 @@ struct TestNode : Node {
   TestNode()
       : Node(0,
              VersionInfo{.protocol_version = 1, .chain_height = 0, .timestamp = 0, .listen_port = 0, .node_id = 0},
-             chain, mempool, orphan_pool, ledger) {}
+             chain, mempool, orphan_pool, ledger), mempool(1000) {}
 };
 
 struct TestWallet {

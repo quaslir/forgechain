@@ -92,4 +92,30 @@ uint32_t retarget(uint32_t old_difficulty, uint64_t actual_time_seconds,
   return old_difficulty;
 }
 
+
+bool validate_coinbase_amount(const std::vector<core::Transaction>& txs) {
+    bool coinbase_found{false};
+    size_t index = 0;
+    for(size_t i = 0; i < txs.size(); i++) {
+        if(txs[i].sender_ == core::kCoinbaseSender) {
+            if(coinbase_found) return false;
+            coinbase_found = true;
+            index = i;
+        }
+    }
+
+
+    if(!coinbase_found) return true;
+
+    uint64_t fees_total = 0;
+    for(size_t i = 0; i < txs.size(); i++) {
+        if(i == index) continue;
+        fees_total += txs[i].fee_;
+    }
+
+    return txs[index].amount_ <= mining_reward + fees_total;
+
+
+}
+
 } // namespace forgechain::consensus
