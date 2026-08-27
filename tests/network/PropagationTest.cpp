@@ -70,8 +70,8 @@ Wallet make_wallet() {
     return Wallet{kp, derive_address(kp.public_key)};
 }
 
-Transaction make_signed_tx(const Wallet& sender, const str& recipient, uint64_t amount) {
-    Transaction tx(sender.address, recipient, amount, sender.keys.public_key);
+Transaction make_signed_tx(const Wallet& sender, const str& recipient, uint64_t amount, uint64_t fee = 0) {
+    Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee);
     tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
     return tx;
 }
@@ -204,7 +204,7 @@ TEST(Propagation, ForgedTransactionIsNeitherStoredNorRelayed) {
     Wallet alice = make_wallet();
     Wallet mallory = make_wallet();
 
-    Transaction forged(alice.address, "bob-address", 500, mallory.keys.public_key);
+    Transaction forged(alice.address, "bob-address", 500, mallory.keys.public_key, 0);
     forged.signature_ = sign(forged.serialize_for_signing(), mallory.keys.private_key);
     auto forged_hash = forged.compute_hash();
 

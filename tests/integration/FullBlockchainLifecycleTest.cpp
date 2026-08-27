@@ -31,8 +31,8 @@ Wallet make_wallet() {
     return Wallet{kp, derive_address(kp.public_key)};
 }
 
-Transaction make_signed_tx(const Wallet& sender, const str& recipient, uint64_t amount) {
-    Transaction tx(sender.address, recipient, amount, sender.keys.public_key);
+Transaction make_signed_tx(const Wallet& sender, const str& recipient, uint64_t amount, uint64_t fee = 0) {
+    Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee);
     tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
     return tx;
 }
@@ -236,7 +236,7 @@ TEST(FullBlockchainLifecycle, ForgedTransactionNeverReachesAMinedBlock) {
 
     Mempool mempool;
 
-    Transaction forged(alice.address, mallory.address, 500, mallory.keys.public_key);
+    Transaction forged(alice.address, mallory.address, 500, mallory.keys.public_key, 0);
     forged.signature_ = sign(forged.serialize_for_signing(), mallory.keys.private_key);
 
     EXPECT_FALSE(mempool.add_transaction(forged, mallory.keys.public_key));

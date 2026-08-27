@@ -3,6 +3,7 @@
 #include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
+#include "core/Mempool.hpp"
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "network/Handshake.hpp"
@@ -21,7 +22,7 @@
 namespace forgechain::app {
 
 Orchestrator::Orchestrator(OrchestratorConfig config)
-    : config_(std::move(config)), log_(config_.node_name),
+    : config_(std::move(config)), log_(config_.node_name), mempool_(config_.kMaxPending),
       node_(config_.listen_port,
             network::VersionInfo{.protocol_version = 1,
                                  .chain_height = 0,
@@ -79,9 +80,13 @@ void Orchestrator::mining_loop() {
     auto txs_for_block = node_.transactions_for_block(config_.kMaxTxsPerBlock);
 
     if (!config_.reward_address.empty()) {
+        uint64_t fees_total = 0;
+        for(const auto& tx : txs_for_block) {
+            fees_total += tx.fee_;
+        }
       core::Transaction coinbase{core::kCoinbaseSender, config_.reward_address,
-                                 OrchestratorConfig::mining_reward,
-                                 crypto::bytes{}};
+                                 OrchestratorConfig::mining_reward + fees_total,
+                                 crypto::bytes{}, 0};
       txs_for_block.insert(txs_for_block.begin(), coinbase);
     }
 

@@ -5,12 +5,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <sys/types.h>
 #include <utility>
 namespace forgechain::core {
 Transaction::Transaction(str sender, str recipient, uint64_t amount,
-                         core::bytes sender_public_key)
+                         core::bytes sender_public_key, uint64_t fee)
     : sender_(std::move(sender)), recipient_(std::move(recipient)),
-      sender_public_key_(std::move(sender_public_key)), amount_(amount) {}
+      sender_public_key_(std::move(sender_public_key)), amount_(amount), fee_(fee) {}
 crypto::bytes Transaction::serialize_for_signing() const {
 
   crypto::bytes out;
@@ -32,6 +33,8 @@ crypto::bytes Transaction::serialize_for_signing() const {
              reinterpret_cast<const uint8_t *>(&sender_public_key_len) +
                  sizeof(sender_public_key_len));
   out.insert(out.end(), sender_public_key_.begin(), sender_public_key_.end());
+  out.insert(out.end(), reinterpret_cast<const uint8_t*>(&fee_),
+      reinterpret_cast<const uint8_t*>(&fee_) + sizeof(fee_));
   return out;
 }
 crypto::bytes Transaction::serialize() const {
@@ -52,9 +55,9 @@ Transaction::deserialize(const crypto::bytes &payload) {
   size_t offset = 0;
   if (payload.size() < offset + sizeof(uint64_t))
     return std::nullopt;
-  uint64_t amount_ =
+  uint64_t amount =
       *reinterpret_cast<const uint64_t *>(payload.data() + offset);
-  offset += sizeof(amount_);
+  offset += sizeof(amount);
 
   if (payload.size() < offset + sizeof(uint32_t))
     return std::nullopt;
@@ -97,6 +100,11 @@ Transaction::deserialize(const crypto::bytes &payload) {
             payload.data() + offset + sender_public_key_len,
             sender_public_key.data());
   offset += sender_public_key_len;
+  if(payload.size() < offset + sizeof(uint64_t)) return std::nullopt;
+  auto fee = *reinterpret_cast<const uint64_t*>(payload.data() + offset);
+  offset += sizeof(uint64_t);
+
+
 
   if (payload.size() < offset + sizeof(uint32_t))
     return std::nullopt;
@@ -114,7 +122,7 @@ Transaction::deserialize(const crypto::bytes &payload) {
   if (payload.size() != offset)
     return std::nullopt;
 
-  Transaction tx{sender, recipient, amount_, std::move(sender_public_key)};
+  Transaction tx{sender, recipient, amount, std::move(sender_public_key), fee};
   tx.signature_ = std::move(signature);
   return tx;
 }
@@ -123,7 +131,7 @@ crypto::HashBytes Transaction::compute_hash() const {
 }
 bool Transaction::operator==(const Transaction &tx) {
   return sender_ == tx.sender_ && recipient_ == tx.recipient_ &&
-         amount_ == tx.amount_ && signature_ == tx.signature_;
+         amount_ == tx.amount_ && signature_ == tx.signature_ && fee_ == tx.fee_;
 }
 
 } // namespace forgechain::core

@@ -3,10 +3,14 @@
 #include "crypto/CommonTypes.hpp"
 #include <cstddef>
 #include <optional>
+#include <set>
 #include <vector>
 namespace forgechain::core {
 class Mempool {
 public:
+
+    Mempool(size_t max_size);
+
   bool add_transaction(const Transaction &tx,
                        const crypto::bytes &sender_public_key);
   void remove_transaction(const Transaction &tx);
@@ -19,6 +23,14 @@ public:
   [[nodiscard]] bool empty() const;
 
 private:
-  std::vector<Transaction> pending_;
+    struct FeeDescendingComparator {
+        bool operator()(const Transaction&a, const Transaction& b) const {
+            return a.fee_ > b.fee_;
+        }
+    };
+
+
+  std::multiset<Transaction, FeeDescendingComparator> pending_;
+  size_t max_size_;
 };
 } // namespace forgechain::core

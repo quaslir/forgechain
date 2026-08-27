@@ -194,9 +194,9 @@ TEST(BlockDeserialize, RoundTripPreservesAllFieldsWithNoTransactions) {
 
 TEST(BlockDeserialize, RoundTripPreservesTransactions) {
     std::vector<Transaction> txs;
-    txs.emplace_back("alice", "bob", 100, forgechain::crypto::bytes{});
-    txs.emplace_back("bob", "carol", 50, forgechain::crypto::bytes{});
-    txs.emplace_back("carol", "alice", 25, forgechain::crypto::bytes{});
+    txs.emplace_back("alice", "bob", 100, forgechain::crypto::bytes{}, 0);
+    txs.emplace_back("bob", "carol", 50, forgechain::crypto::bytes{}, 0);
+    txs.emplace_back("carol", "alice", 25, forgechain::crypto::bytes{}, 0);
 
     Block original(1, fakeHash(0x22), 1700000456, txs);
     original.difficulty_ = 7;
@@ -222,7 +222,7 @@ TEST(BlockDeserialize, RoundTripPreservesTransactions) {
 
 TEST(BlockDeserialize, RoundTripPreservesHashExactly) {
     std::vector<Transaction> txs;
-    txs.emplace_back("miner", "reward_pool", 5000000, forgechain::crypto::bytes{});
+    txs.emplace_back("miner", "reward_pool", 5000000, forgechain::crypto::bytes{}, 0);
 
     Block original(2, fakeHash(0x9A), 1700009999, txs);
     original.difficulty_ = 123456;
@@ -256,8 +256,8 @@ TEST(BlockDeserialize, TruncatedMidHashesIsRejected) {
 
 TEST(BlockDeserialize, TruncatedMidTransactionListIsRejected) {
     std::vector<Transaction> txs;
-    txs.emplace_back("alice", "bob", 100, forgechain::crypto::bytes{});
-    txs.emplace_back("bob", "carol", 50, forgechain::crypto::bytes{});
+    txs.emplace_back("alice", "bob", 100, forgechain::crypto::bytes{}, 0);
+    txs.emplace_back("bob", "carol", 50, forgechain::crypto::bytes{}, 0);
 
     Block block(1, fakeHash(0x44), 1700000000, txs);
     auto full = block.serialize();
