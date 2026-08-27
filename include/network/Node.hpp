@@ -63,7 +63,8 @@ private:
   void ping_loop();
   bool send_msg(Peer *peer, MessageType type, const crypto::bytes &payload);
 
-  bool register_new_peer(TcpSocket &&socket, const crypto::str &host);
+  bool register_new_peer(TcpSocket &&socket, const crypto::str &host,
+                         bool is_outbound);
   void broadcast_inv(Peer *exclude, InventoryItemType type,
                      const crypto::HashBytes &hash);
   void handle_inv(Peer *peer, const crypto::bytes &payload);

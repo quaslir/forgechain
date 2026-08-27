@@ -18,6 +18,7 @@
 
 #include <unistd.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -36,9 +37,15 @@ uint16_t next_test_port() {
     return port++;
 }
 
+uint64_t next_test_node_id() {
+    static std::atomic<uint64_t> counter{1};
+    return counter.fetch_add(1);
+}
+
 VersionInfo make_version(uint16_t listen_port, uint64_t height = 0) {
     return VersionInfo{.protocol_version = 1, .chain_height = height,
-                       .timestamp = 0, .listen_port = listen_port};
+                       .timestamp = 0, .listen_port = listen_port,
+                       .node_id = next_test_node_id()};
 }
 
 template <typename Predicate>

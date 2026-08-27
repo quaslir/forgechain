@@ -7,6 +7,7 @@
 #include "crypto/CommonTypes.hpp"
 #include "network/Handshake.hpp"
 #include "network/Node.hpp"
+#include "network/NodeId.hpp"
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -25,7 +26,8 @@ Orchestrator::Orchestrator(OrchestratorConfig config)
             network::VersionInfo{.protocol_version = 1,
                                  .chain_height = 0,
                                  .timestamp = 0,
-                                 .listen_port = config_.listen_port},
+                                 .listen_port = config_.listen_port,
+                                 .node_id = network::generate_node_id()},
             chain_, mempool_, orphan_pool_, ledger_) {}
 
 bool Orchestrator::start() {

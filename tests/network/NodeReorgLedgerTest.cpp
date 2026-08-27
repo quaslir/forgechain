@@ -88,7 +88,7 @@ struct TestNode : Node {
 
   TestNode()
       : Node(0, VersionInfo{.protocol_version = 1, .chain_height = 0,
-                            .timestamp = 0, .listen_port = 0},
+                            .timestamp = 0, .listen_port = 0, .node_id = 0},
              chain, mempool, orphan_pool, ledger) {}
 };
 
@@ -323,11 +323,6 @@ TEST(NodeReorg, DisconnectedCandidateIsRejectedAndNothingChanges) {
   unknown_hash.fill(0xAB);
   Block dangling_candidate = make_block(unknown_hash, 3000, {}, 10);
 
-  // No common ancestor exists anywhere (not in chain, not in orphan pool)
-  // for this candidate -- build_fork_chain itself must fail here. This is
-  // exactly the "missing ancestor" case Node::handle_block now detects
-  // before ever calling try_reorg, so the test asserts on build_fork_chain
-  // directly rather than constructing a ForkChain that couldn't exist.
   auto fork_chain =
       build_fork_chain(node.chain, node.orphan_pool, dangling_candidate);
 

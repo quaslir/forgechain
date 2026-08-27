@@ -128,7 +128,8 @@ void Node::ping_loop() {
   }
 }
 
-bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host) {
+bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
+                             bool is_outbound) {
   if (!socket.is_valid())
     return false;
   socket.set_receive_timeout(5);
@@ -142,7 +143,6 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host) {
   if (!incoming_info.has_value())
     return false;
 
-
   auto peer = std::make_shared<Peer>(std::move(socket), *incoming_info, host);
   Peer *raw_peer = peer.get();
 
@@ -153,39 +153,75 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host) {
       return false;
   }
   std::vector<PeerAddress> addresses;
-  std::vector<PeerAddress> new_peer_address{PeerAddress{.host = host, .port = incoming_info->listen_port}};
+  std::vector<PeerAddress> new_peer_address{
+      PeerAddress{.host = host, .port = incoming_info->listen_port}};
   crypto::bytes payload = serialize_peer_list(new_peer_address);
   std::vector<std::shared_ptr<Peer>> to_send;
   size_t peer_index{0};
+  std::thread old_worker;
   {
     std::lock_guard<std::mutex> peers_lock(peers_mutex_);
-
-    for(const auto& existing_peer : peers_) {
-        if(existing_peer.peer->host() == host && existing_peer.peer->remote_version().listen_port == incoming_info->listen_port) return false;
+    bool duplicate_found{false};
+    for (size_t i = 0; i < peers_.size(); i++) {
+      if (incoming_info->listen_port != 0 &&
+          peers_[i].peer->remote_version().listen_port != 0 &&
+          peers_[i].peer->host() == host &&
+          peers_[i].peer->remote_version().listen_port ==
+              incoming_info->listen_port) {
+        if (info_.node_id < incoming_info->node_id) {
+          if (is_outbound) {
+            old_worker = std::move(peers_[i].worker);
+            peers_[i].peer->mark_dead();
+            peers_[i].peer = std::move(peer);
+            peer_index = i;
+            duplicate_found = true;
+            break;
+          } else {
+            return false;
+          }
+        } else {
+          if (is_outbound) {
+            return false;
+          } else {
+            old_worker = std::move(peers_[i].worker);
+            peers_[i].peer->mark_dead();
+            peers_[i].peer = std::move(peer);
+            peer_index = i;
+            duplicate_found = true;
+            break;
+          }
+        }
+      }
     }
 
+    if (!duplicate_found) {
       addresses.reserve(peers_.size());
-    for(const auto& my_peer : peers_) {
+      for (const auto &my_peer : peers_) {
         to_send.push_back(my_peer.peer);
-        addresses.push_back(PeerAddress{.host = my_peer.peer->host(), .port = my_peer.peer->remote_version().listen_port});
+        addresses.push_back(
+            PeerAddress{.host = my_peer.peer->host(),
+                        .port = my_peer.peer->remote_version().listen_port});
+      }
+      peers_.push_back(
+          PeerEntry{.peer = std::move(peer), .worker = std::thread{}});
+      peer_index = peers_.size() - 1;
     }
-    peers_.push_back(
-        PeerEntry{.peer = std::move(peer), .worker = std::thread{}});
-    peer_index = peers_.size() - 1;
+  }
+
+  if (old_worker.joinable()) {
+    old_worker.join();
   }
 
   send_msg(raw_peer, MessageType::PEERS, serialize_peer_list(addresses));
   std::thread worker{&Node::peer_loop, this, raw_peer};
-{
+  {
     std::lock_guard<std::mutex> peers_lock(peers_mutex_);
     peers_[peer_index].worker = std::move(worker);
-}
+  }
 
-
-
-    for(const auto& peer_to_send : to_send) {
-        send_msg(peer_to_send.get(), MessageType::PEERS, payload);
-    }
+  for (const auto &peer_to_send : to_send) {
+    send_msg(peer_to_send.get(), MessageType::PEERS, payload);
+  }
   return true;
 }
 
@@ -196,7 +232,7 @@ bool Node::accept_one_peer() {
     return false;
   }
 
-  return register_new_peer(std::move(socket), *host);
+  return register_new_peer(std::move(socket), *host, false);
 }
 
 bool Node::connect_to_peer(const crypto::str &host, uint16_t port) {
@@ -206,7 +242,7 @@ bool Node::connect_to_peer(const crypto::str &host, uint16_t port) {
   }
   TcpSocket socket = connect_to(host, port);
 
-  return register_new_peer(std::move(socket), host);
+  return register_new_peer(std::move(socket), host, true);
 }
 
 [[nodiscard]] size_t Node::peer_count() const {
