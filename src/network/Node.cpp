@@ -154,13 +154,14 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
                   serialize_getblocks(my_height)))
       return false;
   }
+    std::thread worker{&Node::peer_loop, this, raw_peer};
   std::vector<PeerAddress> addresses;
   std::vector<PeerAddress> new_peer_address{
       PeerAddress{.host = host, .port = incoming_info->listen_port}};
   crypto::bytes payload = serialize_peer_list(new_peer_address);
   std::vector<std::shared_ptr<Peer>> to_send;
-  size_t peer_index{0};
   std::thread old_worker;
+  bool accepted{true};
   {
     std::lock_guard<std::mutex> peers_lock(peers_mutex_);
     bool duplicate_found{false};
@@ -175,20 +176,23 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
             old_worker = std::move(peers_[i].worker);
             peers_[i].peer->mark_dead();
             peers_[i].peer = std::move(peer);
-            peer_index = i;
+            peers_[i].worker = std::move(worker);
             duplicate_found = true;
+
             break;
           } else {
-            return false;
+            accepted = false;
+            break;
           }
         } else {
           if (is_outbound) {
-            return false;
+            accepted = false;
+            break;
           } else {
             old_worker = std::move(peers_[i].worker);
             peers_[i].peer->mark_dead();
             peers_[i].peer = std::move(peer);
-            peer_index = i;
+            peers_[i].worker = std::move(worker);
             duplicate_found = true;
             break;
           }
@@ -196,7 +200,7 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
       }
     }
 
-    if (!duplicate_found) {
+    if (accepted && !duplicate_found) {
       addresses.reserve(peers_.size());
       for (const auto &my_peer : peers_) {
         to_send.push_back(my_peer.peer);
@@ -205,21 +209,21 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
                         .port = my_peer.peer->remote_version().listen_port});
       }
       peers_.push_back(
-          PeerEntry{.peer = std::move(peer), .worker = std::thread{}});
-      peer_index = peers_.size() - 1;
+          PeerEntry{.peer = std::move(peer), .worker = std::move(worker)});
     }
   }
 
-  if (old_worker.joinable()) {
-    old_worker.join();
+  if(!accepted) {
+      raw_peer->mark_dead();
+
+      if (worker.joinable()) {
+        worker.join();
+      }
+      return false;
   }
 
+
   send_msg(raw_peer, MessageType::PEERS, serialize_peer_list(addresses));
-  std::thread worker{&Node::peer_loop, this, raw_peer};
-  {
-    std::lock_guard<std::mutex> peers_lock(peers_mutex_);
-    peers_[peer_index].worker = std::move(worker);
-  }
 
   for (const auto &peer_to_send : to_send) {
     send_msg(peer_to_send.get(), MessageType::PEERS, payload);
