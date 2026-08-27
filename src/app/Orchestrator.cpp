@@ -28,7 +28,11 @@ Orchestrator::Orchestrator(OrchestratorConfig config)
                                  .timestamp = 0,
                                  .listen_port = config_.listen_port,
                                  .node_id = network::generate_node_id()},
-            chain_, mempool_, orphan_pool_, ledger_) {}
+            chain_, mempool_, orphan_pool_, ledger_) {
+                node_.set_logger([this](const crypto::str& category, const crypto::str& message) {
+                    log_.log(category, message);
+                });
+            }
 
 bool Orchestrator::start() {
   if (!node_.start())

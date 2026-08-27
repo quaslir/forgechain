@@ -25,6 +25,8 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <functional>
+#include <string>
 namespace forgechain::network {
 Node::Node(uint16_t listen_port, VersionInfo info, core::Blockchain &blockchain,
            core::Mempool &mempool, core::OrphanPool &orphan_pool,
@@ -419,7 +421,9 @@ void Node::handle_peers(const crypto::bytes &payload) {
     return;
 
   for (const auto &new_peer : *list) {
-    connect_to_peer(new_peer.host, new_peer.port);
+    if(!connect_to_peer(new_peer.host, new_peer.port) && logger_) {
+        logger_("PEER", "discovery FAILED to connect to " + new_peer.host + ":" + std::to_string(new_peer.port));
+    }
   }
 }
 
@@ -533,6 +537,11 @@ void Node::set_balance(const crypto::str &address, uint64_t amount) {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
   ledger_.set_balance(address, amount);
 }
+
+void Node::set_logger(std::function<void(const crypto::str&, const crypto::str&)> logger) {
+    logger_ = std::move(logger);
+}
+
 void Node::stop() {
   running_.store(false);
   listener_.close_socket();
