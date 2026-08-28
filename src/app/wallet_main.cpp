@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
       continue;
     else if (command == "help") {
       std::cout << "commands:" << std::endl;
-      std::cout << "  send <address> <amount>  sign and submit a transaction"
+      std::cout << "  send <address> <amount> (optional) <fee>  sign and submit a transaction"
                 << std::endl;
       std::cout << "  balance                  show this wallet's balance"
                 << std::endl;
@@ -125,11 +125,12 @@ int main(int argc, char *argv[]) {
       } else
         std::cerr << "network error" << std::endl;
     } else if (command == "send") {
-      crypto::str recipient{}, amount_str{};
-      iss >> recipient >> amount_str;
+      crypto::str recipient{}, amount_str{}, fee_str;
+      iss >> recipient >> amount_str >> fee_str;
 
       if (recipient.empty() || amount_str.empty()) {
-        std::cerr << "usage: send <address> <amount>" << std::endl;
+        std::cerr << "usage: send <address> <amount> (optional> <fee>"
+                  << std::endl;
         continue;
       }
       auto amount = app::parse_number(amount_str);
@@ -138,8 +139,20 @@ int main(int argc, char *argv[]) {
         continue;
       }
 
+      int fee{0};
+      if (!fee_str.empty()) {
+        auto fee_num = app::parse_number(fee_str);
+        if (fee_num.has_value()) {
+          fee = *fee_num;
+        } else {
+          std::cerr << "invalid fee: " << fee_str << std::endl;
+          continue;
+        }
+      }
+
       auto ok = wallet->send(recipient, static_cast<uint64_t>(*amount),
-                             config.address.host, config.address.port);
+                             static_cast<uint64_t>(fee), config.address.host,
+                             config.address.port);
       if (!ok.has_value()) {
         std::cerr << "network error" << std::endl;
       } else if (*ok) {

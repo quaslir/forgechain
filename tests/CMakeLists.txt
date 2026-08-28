@@ -36,11 +36,13 @@ add_forgechain_test_executable(core_tests
     core/MempoolTest.cpp
     core/OrphanPoolTest.cpp
     core/ForkResolutionTest.cpp
+    core/TransactionFeeTest.cpp
 )
 
 add_forgechain_test_executable(consensus_tests
     consensus/ProofOfWorkTest.cpp
     consensus/RetargetTest.cpp
+    consensus/CoinbaseValidationTest.cpp
 )
 
 add_forgechain_test_executable(integration_tests

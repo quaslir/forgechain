@@ -9,7 +9,8 @@
 namespace forgechain::network {
 crypto::bytes serialize_peer_address(const PeerAddress &peer_address) {
   crypto::bytes out;
-  out.reserve(sizeof(peer_address.port) + sizeof(uint32_t) + peer_address.host.size());
+  out.reserve(sizeof(peer_address.port) + sizeof(uint32_t) +
+              peer_address.host.size());
   out.insert(out.end(), reinterpret_cast<const uint8_t *>(&peer_address.port),
              reinterpret_cast<const uint8_t *>(&peer_address.port) +
                  sizeof(peer_address.port));

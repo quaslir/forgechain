@@ -18,10 +18,10 @@ bool Ledger::apply_transaction(const Transaction &tx) {
   if (tx.sender_ != kCoinbaseSender) {
     if (!balances_.contains(tx.sender_))
       return false;
-    if (tx.amount_ > balances_[tx.sender_])
+    if (tx.amount_ + tx.fee_ > balances_[tx.sender_])
       return false;
 
-    balances_[tx.sender_] -= tx.amount_;
+    balances_[tx.sender_] -= tx.amount_ + tx.fee_;
   }
   balances_[tx.recipient_] += tx.amount_;
   return true;
@@ -33,7 +33,7 @@ bool Ledger::reverse_transaction(const Transaction &tx) {
     return false;
   balances_[tx.recipient_] -= tx.amount_;
   if (tx.sender_ != kCoinbaseSender) {
-    balances_[tx.sender_] += tx.amount_;
+    balances_[tx.sender_] += tx.amount_ + tx.fee_;
   }
 
   return true;

@@ -17,16 +17,16 @@
 #include "network/TcpSocket.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <sys/socket.h>
 #include <thread>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <functional>
-#include <string>
 namespace forgechain::network {
 Node::Node(uint16_t listen_port, VersionInfo info, core::Blockchain &blockchain,
            core::Mempool &mempool, core::OrphanPool &orphan_pool,
@@ -154,7 +154,7 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
                   serialize_getblocks(my_height)))
       return false;
   }
-    std::thread worker{&Node::peer_loop, this, raw_peer};
+  std::thread worker{&Node::peer_loop, this, raw_peer};
   std::vector<PeerAddress> addresses;
   std::vector<PeerAddress> new_peer_address{
       PeerAddress{.host = host, .port = incoming_info->listen_port}};
@@ -213,15 +213,14 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
     }
   }
 
-  if(!accepted) {
-      raw_peer->mark_dead();
+  if (!accepted) {
+    raw_peer->mark_dead();
 
-      if (worker.joinable()) {
-        worker.join();
-      }
-      return false;
+    if (worker.joinable()) {
+      worker.join();
+    }
+    return false;
   }
-
 
   send_msg(raw_peer, MessageType::PEERS, serialize_peer_list(addresses));
 
@@ -336,7 +335,8 @@ void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
   crypto::HashBytes hash = block_container->hash_;
   if (!consensus::meets_target(hash, block_container->difficulty_))
     return;
-
+  if (!consensus::validate_coinbase_amount(block_container->transactions_))
+    return;
   core::BlockValidation block_status;
   {
     std::lock_guard<std::mutex> lock(chain_mutex_);
@@ -425,8 +425,9 @@ void Node::handle_peers(const crypto::bytes &payload) {
     return;
 
   for (const auto &new_peer : *list) {
-    if(!connect_to_peer(new_peer.host, new_peer.port) && logger_) {
-        logger_("PEER", "discovery FAILED to connect to " + new_peer.host + ":" + std::to_string(new_peer.port));
+    if (!connect_to_peer(new_peer.host, new_peer.port) && logger_) {
+      logger_("PEER", "discovery FAILED to connect to " + new_peer.host + ":" +
+                          std::to_string(new_peer.port));
     }
   }
 }
@@ -542,8 +543,9 @@ void Node::set_balance(const crypto::str &address, uint64_t amount) {
   ledger_.set_balance(address, amount);
 }
 
-void Node::set_logger(std::function<void(const crypto::str&, const crypto::str&)> logger) {
-    logger_ = std::move(logger);
+void Node::set_logger(
+    std::function<void(const crypto::str &, const crypto::str &)> logger) {
+  logger_ = std::move(logger);
 }
 
 void Node::stop() {

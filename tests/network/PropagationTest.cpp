@@ -70,8 +70,8 @@ Wallet make_wallet() {
     return Wallet{kp, derive_address(kp.public_key)};
 }
 
-Transaction make_signed_tx(const Wallet& sender, const str& recipient, uint64_t amount) {
-    Transaction tx(sender.address, recipient, amount, sender.keys.public_key);
+Transaction make_signed_tx(const Wallet& sender, const str& recipient, uint64_t amount, uint64_t fee = 0) {
+    Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee);
     tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
     return tx;
 }
@@ -101,7 +101,7 @@ TEST(Propagation, ValidBlockFromOnePeerReachesSecondPeer) {
     uint16_t port_b = next_test_port();
 
     Blockchain chain_a;
-    Mempool mempool_a;
+    Mempool mempool_a(1000);
     OrphanPool orphan_pool_a;
     Ledger ledger_a;
     Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
@@ -109,7 +109,7 @@ TEST(Propagation, ValidBlockFromOnePeerReachesSecondPeer) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
-    Mempool mempool_b;
+    Mempool mempool_b(1000);
     OrphanPool orphan_pool_b;
     Ledger ledger_b;
     Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
@@ -120,7 +120,7 @@ TEST(Propagation, ValidBlockFromOnePeerReachesSecondPeer) {
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
 
     RawPeer source;
-    ASSERT_TRUE(source.connect(port_a, make_version(port_a)));
+    ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
     constexpr uint32_t kTestDifficulty = 8;
@@ -139,7 +139,7 @@ TEST(Propagation, ValidTransactionFromOnePeerReachesSecondPeer) {
     uint16_t port_b = next_test_port();
 
     Blockchain chain_a;
-    Mempool mempool_a;
+    Mempool mempool_a(1000);
     OrphanPool orphan_pool_a;
     Ledger ledger_a;
     Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
@@ -147,7 +147,7 @@ TEST(Propagation, ValidTransactionFromOnePeerReachesSecondPeer) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
-    Mempool mempool_b;
+    Mempool mempool_b(1000);
     OrphanPool orphan_pool_b;
     Ledger ledger_b;
     Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
@@ -158,7 +158,7 @@ TEST(Propagation, ValidTransactionFromOnePeerReachesSecondPeer) {
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
 
     RawPeer source;
-    ASSERT_TRUE(source.connect(port_a, make_version(port_a)));
+    ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
     Wallet alice = make_wallet();
@@ -179,7 +179,7 @@ TEST(Propagation, ForgedTransactionIsNeitherStoredNorRelayed) {
     uint16_t port_b = next_test_port();
 
     Blockchain chain_a;
-    Mempool mempool_a;
+    Mempool mempool_a(1000);
     OrphanPool orphan_pool_a;
     Ledger ledger_a;
     Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
@@ -187,7 +187,7 @@ TEST(Propagation, ForgedTransactionIsNeitherStoredNorRelayed) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
-    Mempool mempool_b;
+    Mempool mempool_b(1000);
     OrphanPool orphan_pool_b;
     Ledger ledger_b;
     Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
@@ -198,13 +198,13 @@ TEST(Propagation, ForgedTransactionIsNeitherStoredNorRelayed) {
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
 
     RawPeer source;
-    ASSERT_TRUE(source.connect(port_a, make_version(port_a)));
+    ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
     Wallet alice = make_wallet();
     Wallet mallory = make_wallet();
 
-    Transaction forged(alice.address, "bob-address", 500, mallory.keys.public_key);
+    Transaction forged(alice.address, "bob-address", 500, mallory.keys.public_key, 0);
     forged.signature_ = sign(forged.serialize_for_signing(), mallory.keys.private_key);
     auto forged_hash = forged.compute_hash();
 
@@ -220,7 +220,7 @@ TEST(Propagation, BlockWithWrongPrevHashIsNeitherStoredNorRelayed) {
     uint16_t port_b = next_test_port();
 
     Blockchain chain_a;
-    Mempool mempool_a;
+    Mempool mempool_a(1000);
     OrphanPool orphan_pool_a;
     Ledger ledger_a;
     Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
@@ -228,7 +228,7 @@ TEST(Propagation, BlockWithWrongPrevHashIsNeitherStoredNorRelayed) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
-    Mempool mempool_b;
+    Mempool mempool_b(1000);
     OrphanPool orphan_pool_b;
     Ledger ledger_b;
     Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
@@ -239,7 +239,7 @@ TEST(Propagation, BlockWithWrongPrevHashIsNeitherStoredNorRelayed) {
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
 
     RawPeer source;
-    ASSERT_TRUE(source.connect(port_a, make_version(port_a)));
+    ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
     constexpr uint32_t kTestDifficulty = 8;
@@ -264,7 +264,7 @@ TEST(Propagation, BlockWithTamperedHashIsNeitherStoredNorRelayed) {
     uint16_t port_b = next_test_port();
 
     Blockchain chain_a;
-    Mempool mempool_a;
+    Mempool mempool_a(1000);
     OrphanPool orphan_pool_a;
     Ledger ledger_a;
     Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
@@ -272,7 +272,7 @@ TEST(Propagation, BlockWithTamperedHashIsNeitherStoredNorRelayed) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
-    Mempool mempool_b;
+    Mempool mempool_b(1000);
     OrphanPool orphan_pool_b;
     Ledger ledger_b;
     Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
@@ -283,7 +283,7 @@ TEST(Propagation, BlockWithTamperedHashIsNeitherStoredNorRelayed) {
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
 
     RawPeer source;
-    ASSERT_TRUE(source.connect(port_a, make_version(port_a)));
+    ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
     constexpr uint32_t kTestDifficulty = 8;
@@ -309,7 +309,7 @@ TEST(Propagation, HeavierForkTriggersReorgAndPropagatesToPeer) {
     uint16_t port_b = next_test_port();
 
     Blockchain chain_a;
-    Mempool mempool_a;
+    Mempool mempool_a(1000);
     OrphanPool orphan_pool_a;
     Ledger ledger_a;
     Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
@@ -317,7 +317,7 @@ TEST(Propagation, HeavierForkTriggersReorgAndPropagatesToPeer) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
-    Mempool mempool_b;
+    Mempool mempool_b(1000);
     OrphanPool orphan_pool_b;
     Ledger ledger_b;
     Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
@@ -328,7 +328,7 @@ TEST(Propagation, HeavierForkTriggersReorgAndPropagatesToPeer) {
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
 
     RawPeer source;
-    ASSERT_TRUE(source.connect(port_a, make_version(port_a)));
+    ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
     HashBytes genesisHash = chain_a.latest().hash_;
@@ -360,7 +360,7 @@ TEST(Propagation, ReorgReturnsDiscardedTransactionToMempool) {
     uint16_t port_b = next_test_port();
 
     Blockchain chain_a;
-    Mempool mempool_a;
+    Mempool mempool_a(1000);
     OrphanPool orphan_pool_a;
     Ledger ledger_a;
     Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
@@ -368,7 +368,7 @@ TEST(Propagation, ReorgReturnsDiscardedTransactionToMempool) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
-    Mempool mempool_b;
+    Mempool mempool_b(1000);
     OrphanPool orphan_pool_b;
     Ledger ledger_b;
     Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
@@ -379,7 +379,7 @@ TEST(Propagation, ReorgReturnsDiscardedTransactionToMempool) {
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
 
     RawPeer source;
-    ASSERT_TRUE(source.connect(port_a, make_version(port_a)));
+    ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
     HashBytes genesisHash = chain_a.latest().hash_;
@@ -412,7 +412,7 @@ TEST(Propagation, LedgerBalanceUpdatesOnBothNodesAfterBlockWithRealTransaction) 
     uint16_t port_b = next_test_port();
 
     Blockchain chain_a;
-    Mempool mempool_a;
+    Mempool mempool_a(1000);
     OrphanPool orphan_pool_a;
     Ledger ledger_a;
     Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
@@ -420,7 +420,7 @@ TEST(Propagation, LedgerBalanceUpdatesOnBothNodesAfterBlockWithRealTransaction) 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
-    Mempool mempool_b;
+    Mempool mempool_b(1000);
     OrphanPool orphan_pool_b;
     Ledger ledger_b;
     Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
@@ -431,7 +431,7 @@ TEST(Propagation, LedgerBalanceUpdatesOnBothNodesAfterBlockWithRealTransaction) 
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
 
     RawPeer source;
-    ASSERT_TRUE(source.connect(port_a, make_version(port_a)));
+    ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
     Wallet alice = make_wallet();
@@ -472,7 +472,7 @@ TEST(Propagation, BlockWithUnaffordableTransactionIsRejectedNotJustSkipped) {
     uint16_t port_b = next_test_port();
 
     Blockchain chain_a;
-    Mempool mempool_a;
+    Mempool mempool_a(1000);
     OrphanPool orphan_pool_a;
     Ledger ledger_a;
     Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
@@ -480,7 +480,7 @@ TEST(Propagation, BlockWithUnaffordableTransactionIsRejectedNotJustSkipped) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
-    Mempool mempool_b;
+    Mempool mempool_b(1000);
     OrphanPool orphan_pool_b;
     Ledger ledger_b;
     Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
@@ -491,7 +491,7 @@ TEST(Propagation, BlockWithUnaffordableTransactionIsRejectedNotJustSkipped) {
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
 
     RawPeer source;
-    ASSERT_TRUE(source.connect(port_a, make_version(port_a)));
+    ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
     Wallet alice = make_wallet();
@@ -515,7 +515,7 @@ TEST(Propagation, LedgerReflectsWinningBranchNotLosingBranchAfterReorg) {
     uint16_t port_b = next_test_port();
 
     Blockchain chain_a;
-    Mempool mempool_a;
+    Mempool mempool_a(1000);
     OrphanPool orphan_pool_a;
     Ledger ledger_a;
     Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
@@ -523,7 +523,7 @@ TEST(Propagation, LedgerReflectsWinningBranchNotLosingBranchAfterReorg) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     Blockchain chain_b;
-    Mempool mempool_b;
+    Mempool mempool_b(1000);
     OrphanPool orphan_pool_b;
     Ledger ledger_b;
     Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
@@ -534,7 +534,7 @@ TEST(Propagation, LedgerReflectsWinningBranchNotLosingBranchAfterReorg) {
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 1; }, std::chrono::seconds(1)));
 
     RawPeer source;
-    ASSERT_TRUE(source.connect(port_a, make_version(port_a)));
+    ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
     HashBytes genesisHash = chain_a.latest().hash_;

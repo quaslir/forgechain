@@ -417,7 +417,7 @@ TEST(Blockchain, ReorganizeToWithNoDiscardedBlocksReturnsEmptyVector) {
 
 TEST(Blockchain, ClassifyNewBlockAcceptsCoinbaseAsFirstTransaction) {
     Blockchain chain;
-    Transaction coinbase(kCoinbaseSender, "alice", 50, {});
+    Transaction coinbase(kCoinbaseSender, "alice", 50, {}, 0);
     Block block(1, chain.latest().hash_, 5000, {coinbase});
     block.difficulty_ = 3;
     block.hash_ = block.compute_hash();
@@ -427,8 +427,8 @@ TEST(Blockchain, ClassifyNewBlockAcceptsCoinbaseAsFirstTransaction) {
 
 TEST(Blockchain, ClassifyNewBlockAcceptsCoinbaseFollowedByRegularTransactions) {
     Blockchain chain;
-    Transaction coinbase(kCoinbaseSender, "alice", 50, {});
-    Transaction regular("alice", "bob", 10, {});
+    Transaction coinbase(kCoinbaseSender, "alice", 50, {}, 0);
+    Transaction regular("alice", "bob", 10, {}, 0);
     Block block(1, chain.latest().hash_, 5000, {coinbase, regular});
     block.difficulty_ = 3;
     block.hash_ = block.compute_hash();
@@ -438,8 +438,8 @@ TEST(Blockchain, ClassifyNewBlockAcceptsCoinbaseFollowedByRegularTransactions) {
 
 TEST(Blockchain, ClassifyNewBlockRejectsCoinbaseAsSecondTransaction) {
     Blockchain chain;
-    Transaction regular("alice", "bob", 10, {});
-    Transaction coinbase(kCoinbaseSender, "mallory", 50, {});
+    Transaction regular("alice", "bob", 10, {}, 0);
+    Transaction coinbase(kCoinbaseSender, "mallory", 50, {}, 0);
     Block block(1, chain.latest().hash_, 5000, {regular, coinbase});
     block.difficulty_ = 3;
     block.hash_ = block.compute_hash();
@@ -449,8 +449,8 @@ TEST(Blockchain, ClassifyNewBlockRejectsCoinbaseAsSecondTransaction) {
 
 TEST(Blockchain, ClassifyNewBlockRejectsTwoCoinbaseTransactions) {
     Blockchain chain;
-    Transaction coinbase1(kCoinbaseSender, "alice", 50, {});
-    Transaction coinbase2(kCoinbaseSender, "mallory", 50, {});
+    Transaction coinbase1(kCoinbaseSender, "alice", 50, {}, 0);
+    Transaction coinbase2(kCoinbaseSender, "mallory", 50, {}, 0);
     Block block(1, chain.latest().hash_, 5000, {coinbase1, coinbase2});
     block.difficulty_ = 3;
     block.hash_ = block.compute_hash();
@@ -460,8 +460,8 @@ TEST(Blockchain, ClassifyNewBlockRejectsTwoCoinbaseTransactions) {
 
 TEST(Blockchain, ClassifyNewBlockWithNoCoinbaseIsUnaffectedByCoinbaseCheck) {
     Blockchain chain;
-    Transaction regular1("alice", "bob", 10, {});
-    Transaction regular2("bob", "charlie", 5, {});
+    Transaction regular1("alice", "bob", 10, {}, 0);
+    Transaction regular2("bob", "charlie", 5, {}, 0);
     Block block(1, chain.latest().hash_, 5000, {regular1, regular2});
     block.difficulty_ = 3;
     block.hash_ = block.compute_hash();
@@ -471,8 +471,8 @@ TEST(Blockchain, ClassifyNewBlockWithNoCoinbaseIsUnaffectedByCoinbaseCheck) {
 
 TEST(Blockchain, ClassifyNewBlockRejectsMisplacedCoinbaseEvenWhenAlsoAFork) {
     Blockchain chain;
-    Transaction regular("alice", "bob", 10, {});
-    Transaction coinbase(kCoinbaseSender, "mallory", 50, {});
+    Transaction regular("alice", "bob", 10, {}, 0);
+    Transaction coinbase(kCoinbaseSender, "mallory", 50, {}, 0);
     Block block(1, zeroHash(), 5000, {regular, coinbase});
     block.difficulty_ = 3;
     block.hash_ = block.compute_hash();

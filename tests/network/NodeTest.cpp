@@ -52,7 +52,7 @@ struct TestNode : Node {
     Ledger ledger;
 
     TestNode(uint16_t port, VersionInfo info)
-        : Node(port, info, chain, mempool, orphan_pool, ledger) {}
+        : Node(port, info, chain, mempool, orphan_pool, ledger), mempool(1000) {}
 };
 
 ::testing::AssertionResult RunWithTimeout(std::chrono::milliseconds timeout,
@@ -315,8 +315,8 @@ TestWallet make_test_wallet() {
 }
 
 Transaction make_signed_test_tx(const TestWallet& sender, const str& recipient,
-                                 uint64_t amount) {
-    Transaction tx(sender.address, recipient, amount, sender.keys.public_key);
+                                 uint64_t amount, uint64_t fee = 0) {
+    Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee);
     tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
     return tx;
 }

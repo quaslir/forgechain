@@ -67,8 +67,8 @@ Wallet make_wallet() {
 }
 
 Transaction make_signed_tx(const Wallet &sender, const str &recipient,
-                            uint64_t amount) {
-  Transaction tx(sender.address, recipient, amount, sender.keys.public_key);
+                            uint64_t amount, uint64_t fee = 0) {
+  Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee);
   tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
   return tx;
 }
@@ -89,7 +89,7 @@ struct TestNode : Node {
   TestNode()
       : Node(0, VersionInfo{.protocol_version = 1, .chain_height = 0,
                             .timestamp = 0, .listen_port = 0, .node_id = 0},
-             chain, mempool, orphan_pool, ledger) {}
+             chain, mempool, orphan_pool, ledger), mempool(1000) {}
 };
 
 Ledger recompute_ledger_from_genesis(

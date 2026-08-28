@@ -25,8 +25,8 @@ Wallet make_wallet() {
 }
 
 Transaction make_signed_tx(const Wallet& sender, const str& recipient, uint64_t amount,
-                            bytes* out_signature = nullptr) {
-    Transaction tx(sender.address, recipient, amount, sender.keys.public_key);
+                            uint64_t fee = 0, bytes* out_signature = nullptr) {
+    Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee);
     bytes signature = sign(tx.serialize_for_signing(), sender.keys.private_key);
     tx.signature_ = signature;
     if (out_signature) *out_signature = signature;
@@ -36,7 +36,7 @@ Transaction make_signed_tx(const Wallet& sender, const str& recipient, uint64_t 
 }  // namespace
 
 TEST(Mempool, AcceptsValidSignedTransaction) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     Transaction tx = make_signed_tx(alice, "bob-address", 100);
 
@@ -45,11 +45,11 @@ TEST(Mempool, AcceptsValidSignedTransaction) {
 }
 
 TEST(Mempool, RejectsTransactionWithInvalidSignature) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     Wallet mallory = make_wallet();
 
-    Transaction tx(alice.address, "bob-address", 100, alice.keys.public_key);
+    Transaction tx(alice.address, "bob-address", 100, alice.keys.public_key, 0);
     tx.signature_ = sign(tx.serialize_for_signing(), mallory.keys.private_key);
 
     EXPECT_FALSE(mempool.add_transaction(tx, alice.keys.public_key));
@@ -57,11 +57,11 @@ TEST(Mempool, RejectsTransactionWithInvalidSignature) {
 }
 
 TEST(Mempool, RejectsTransactionWhenPublicKeyDoesNotMatchClaimedSender) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     Wallet mallory = make_wallet();
 
-    Transaction tx(alice.address, "bob-address", 100, mallory.keys.public_key);
+    Transaction tx(alice.address, "bob-address", 100, mallory.keys.public_key, 0);
     tx.signature_ = sign(tx.serialize_for_signing(), mallory.keys.private_key);
 
     EXPECT_TRUE(verify(tx.serialize_for_signing(), tx.signature_, mallory.keys.public_key));
@@ -70,13 +70,13 @@ TEST(Mempool, RejectsTransactionWhenPublicKeyDoesNotMatchClaimedSender) {
 }
 
 TEST(Mempool, RejectsTransactionWithTamperedAmount) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
 
-    Transaction original(alice.address, "bob-address", 100, alice.keys.public_key);
+    Transaction original(alice.address, "bob-address", 100, alice.keys.public_key, 0);
     bytes signature = sign(original.serialize_for_signing(), alice.keys.private_key);
 
-    Transaction tampered(alice.address, "bob-address", 999999, alice.keys.public_key);
+    Transaction tampered(alice.address, "bob-address", 999999, alice.keys.public_key, 0);
     tampered.signature_ = signature;
 
     EXPECT_FALSE(mempool.add_transaction(tampered, alice.keys.public_key));
@@ -84,16 +84,16 @@ TEST(Mempool, RejectsTransactionWithTamperedAmount) {
 }
 
 TEST(Mempool, RejectsTransactionWithEmptySignature) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
 
-    Transaction tx(alice.address, "bob-address", 100, alice.keys.public_key);
+    Transaction tx(alice.address, "bob-address", 100, alice.keys.public_key, 0);
 
     EXPECT_FALSE(mempool.add_transaction(tx, alice.keys.public_key));
 }
 
 TEST(Mempool, AcceptsMultipleDistinctTransactionsFromSameSender) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
 
     Transaction tx1 = make_signed_tx(alice, "bob-address", 100);
@@ -105,7 +105,7 @@ TEST(Mempool, AcceptsMultipleDistinctTransactionsFromSameSender) {
 }
 
 TEST(Mempool, AcceptsTransactionsFromMultipleDistinctSenders) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     Wallet bob = make_wallet();
 
@@ -118,13 +118,13 @@ TEST(Mempool, AcceptsTransactionsFromMultipleDistinctSenders) {
 }
 
 TEST(Mempool, StartsEmpty) {
-    Mempool mempool;
+    Mempool mempool(1000);
     EXPECT_TRUE(mempool.empty());
     EXPECT_EQ(mempool.size(), 0u);
 }
 
 TEST(Mempool, NotEmptyAfterAcceptedTransaction) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     mempool.add_transaction(make_signed_tx(alice, "bob-address", 10), alice.keys.public_key);
 
@@ -132,11 +132,11 @@ TEST(Mempool, NotEmptyAfterAcceptedTransaction) {
 }
 
 TEST(Mempool, RemainsEmptyAfterRejectedTransaction) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     Wallet mallory = make_wallet();
 
-    Transaction tx(alice.address, "bob-address", 10, alice.keys.public_key);
+    Transaction tx(alice.address, "bob-address", 10, alice.keys.public_key, 0);
     tx.signature_ = sign(tx.serialize_for_signing(), mallory.keys.private_key);
     mempool.add_transaction(tx, alice.keys.public_key);
 
@@ -144,7 +144,7 @@ TEST(Mempool, RemainsEmptyAfterRejectedTransaction) {
 }
 
 TEST(Mempool, RemoveTransactionDecreasesSize) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     Transaction tx = make_signed_tx(alice, "bob-address", 100);
     mempool.add_transaction(tx, alice.keys.public_key);
@@ -155,7 +155,7 @@ TEST(Mempool, RemoveTransactionDecreasesSize) {
 }
 
 TEST(Mempool, RemoveOnlyRemovesTheMatchingTransaction) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     Transaction tx1 = make_signed_tx(alice, "bob-address", 100);
     Transaction tx2 = make_signed_tx(alice, "charlie-address", 50);
@@ -171,7 +171,7 @@ TEST(Mempool, RemoveOnlyRemovesTheMatchingTransaction) {
 }
 
 TEST(Mempool, RemovingNonExistentTransactionIsANoOp) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     Transaction tx1 = make_signed_tx(alice, "bob-address", 100);
     mempool.add_transaction(tx1, alice.keys.public_key);
@@ -182,7 +182,7 @@ TEST(Mempool, RemovingNonExistentTransactionIsANoOp) {
 }
 
 TEST(Mempool, RemoveThenReAddSameTransactionWorks) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     Transaction tx = make_signed_tx(alice, "bob-address", 100);
 
@@ -195,7 +195,7 @@ TEST(Mempool, RemoveThenReAddSameTransactionWorks) {
 }
 
 TEST(Mempool, GetTransactionsForBlockReturnsAllWhenLimitExceedsSize) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     mempool.add_transaction(make_signed_tx(alice, "bob-address", 10), alice.keys.public_key);
     mempool.add_transaction(make_signed_tx(alice, "charlie-address", 20), alice.keys.public_key);
@@ -205,7 +205,7 @@ TEST(Mempool, GetTransactionsForBlockReturnsAllWhenLimitExceedsSize) {
 }
 
 TEST(Mempool, GetTransactionsForBlockRespectsLimit) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     for (int i = 0; i < 5; ++i) {
         mempool.add_transaction(
@@ -218,7 +218,7 @@ TEST(Mempool, GetTransactionsForBlockRespectsLimit) {
 }
 
 TEST(Mempool, GetTransactionsForBlockReturnsEarliestAddedFirst) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     Transaction first = make_signed_tx(alice, "first-recipient", 10);
     Transaction second = make_signed_tx(alice, "second-recipient", 20);
@@ -235,13 +235,13 @@ TEST(Mempool, GetTransactionsForBlockReturnsEarliestAddedFirst) {
 }
 
 TEST(Mempool, GetTransactionsForBlockOnEmptyMempoolReturnsEmpty) {
-    Mempool mempool;
+    Mempool mempool(1000);
     auto result = mempool.get_transactions_for_block(10);
     EXPECT_TRUE(result.empty());
 }
 
 TEST(Mempool, GetTransactionsForBlockWithZeroLimitReturnsEmpty) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     mempool.add_transaction(make_signed_tx(alice, "bob-address", 10), alice.keys.public_key);
 
@@ -250,7 +250,7 @@ TEST(Mempool, GetTransactionsForBlockWithZeroLimitReturnsEmpty) {
 }
 
 TEST(Mempool, GetTransactionsForBlockDoesNotModifyMempool) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     mempool.add_transaction(make_signed_tx(alice, "bob-address", 10), alice.keys.public_key);
     mempool.add_transaction(make_signed_tx(alice, "charlie-address", 20), alice.keys.public_key);
@@ -265,7 +265,7 @@ TEST(Mempool, GetTransactionsForBlockDoesNotModifyMempool) {
 }
 
 TEST(Mempool, SelectThenRemoveWorkflowLeavesOnlyUnselectedTransactions) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
     for (int i = 0; i < 5; ++i) {
         mempool.add_transaction(
@@ -293,7 +293,7 @@ TEST(Mempool, ManyWalletsManyTransactionsAllAcceptedCorrectly) {
         wallets.push_back(make_wallet());
     }
 
-    Mempool mempool;
+    Mempool mempool(1000);
     for (int i = 0; i < kWalletCount; ++i) {
         Transaction tx = make_signed_tx(wallets[static_cast<size_t>(i)], "shared-recipient", 10);
         EXPECT_TRUE(mempool.add_transaction(tx, wallets[static_cast<size_t>(i)].keys.public_key))
@@ -304,10 +304,10 @@ TEST(Mempool, ManyWalletsManyTransactionsAllAcceptedCorrectly) {
 }
 
 TEST(Mempool, RejectsCoinbaseMarkedTransaction) {
-    Mempool mempool;
+    Mempool mempool(1000);
     Wallet alice = make_wallet();
 
-    Transaction tx(kCoinbaseSender, alice.address, 50, alice.keys.public_key);
+    Transaction tx(kCoinbaseSender, alice.address, 50, alice.keys.public_key, 0);
     tx.signature_ = sign(tx.serialize_for_signing(), alice.keys.private_key);
 
     EXPECT_FALSE(mempool.add_transaction(tx, alice.keys.public_key));
@@ -315,10 +315,133 @@ TEST(Mempool, RejectsCoinbaseMarkedTransaction) {
 }
 
 TEST(Mempool, RejectsCoinbaseMarkedTransactionEvenWithEmptyKey) {
-    Mempool mempool;
+    Mempool mempool(1000);
 
-    Transaction tx(kCoinbaseSender, "alice-address", 50, {});
+    Transaction tx(kCoinbaseSender, "alice-address", 50, {}, 0);
 
     EXPECT_FALSE(mempool.add_transaction(tx, {}));
     EXPECT_EQ(mempool.size(), 0u);
+}
+
+TEST(Mempool, GetTransactionsForBlockReturnsHighestFeeFirst) {
+    Mempool mempool(1000);
+    Wallet alice = make_wallet();
+
+    Transaction low = make_signed_tx(alice, "r1", 10, 1);
+    Transaction mid = make_signed_tx(alice, "r2", 10, 5);
+    Transaction high = make_signed_tx(alice, "r3", 10, 10);
+
+    ASSERT_TRUE(mempool.add_transaction(mid, alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(low, alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(high, alice.keys.public_key));
+
+    auto for_block = mempool.get_transactions_for_block(10);
+
+    ASSERT_EQ(for_block.size(), 3u);
+    EXPECT_EQ(for_block[0].fee_, 10u);
+    EXPECT_EQ(for_block[1].fee_, 5u);
+    EXPECT_EQ(for_block[2].fee_, 1u);
+}
+
+TEST(Mempool, GetTransactionsForBlockRespectsLimitWithFeeOrdering) {
+    Mempool mempool(1000);
+    Wallet alice = make_wallet();
+
+    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, "r1", 10, 1), alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, "r2", 10, 5), alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, "r3", 10, 10), alice.keys.public_key));
+
+    auto for_block = mempool.get_transactions_for_block(2);
+
+    ASSERT_EQ(for_block.size(), 2u);
+    EXPECT_EQ(for_block[0].fee_, 10u);
+    EXPECT_EQ(for_block[1].fee_, 5u);
+}
+
+TEST(Mempool, EqualFeeTransactionsAreBothRetainedNotDeduplicated) {
+    Mempool mempool(1000);
+    Wallet alice = make_wallet();
+    Wallet bob = make_wallet();
+
+    Transaction tx1 = make_signed_tx(alice, "r1", 10, 5);
+    Transaction tx2 = make_signed_tx(bob, "r2", 20, 5);
+
+    ASSERT_TRUE(mempool.add_transaction(tx1, alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(tx2, bob.keys.public_key));
+
+    EXPECT_EQ(mempool.size(), 2u);
+    EXPECT_TRUE(mempool.has_transaction(tx1.compute_hash()));
+    EXPECT_TRUE(mempool.has_transaction(tx2.compute_hash()));
+}
+
+TEST(Mempool, EvictsCheapestTransactionWhenFullAndIncomingFeeIsHigher) {
+    Mempool mempool(3);
+    Wallet alice = make_wallet();
+
+    Transaction low = make_signed_tx(alice, "r1", 10, 1);
+    Transaction mid = make_signed_tx(alice, "r2", 10, 5);
+    Transaction high = make_signed_tx(alice, "r3", 10, 10);
+    ASSERT_TRUE(mempool.add_transaction(low, alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(mid, alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(high, alice.keys.public_key));
+    ASSERT_EQ(mempool.size(), 3u);
+
+    Transaction evictor = make_signed_tx(alice, "r4", 10, 20);
+    EXPECT_TRUE(mempool.add_transaction(evictor, alice.keys.public_key));
+
+    EXPECT_EQ(mempool.size(), 3u);
+    EXPECT_FALSE(mempool.has_transaction(low.compute_hash()))
+        << "the cheapest transaction (fee=1) should have been evicted";
+    EXPECT_TRUE(mempool.has_transaction(mid.compute_hash()));
+    EXPECT_TRUE(mempool.has_transaction(high.compute_hash()));
+    EXPECT_TRUE(mempool.has_transaction(evictor.compute_hash()));
+}
+
+TEST(Mempool, RejectsLowerFeeTransactionWhenFullRatherThanEvicting) {
+    Mempool mempool(3);
+    Wallet alice = make_wallet();
+
+    Transaction low = make_signed_tx(alice, "r1", 10, 1);
+    Transaction mid = make_signed_tx(alice, "r2", 10, 5);
+    Transaction high = make_signed_tx(alice, "r3", 10, 10);
+    ASSERT_TRUE(mempool.add_transaction(low, alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(mid, alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(high, alice.keys.public_key));
+
+    Transaction too_cheap = make_signed_tx(alice, "r4", 10, 1);
+    EXPECT_FALSE(mempool.add_transaction(too_cheap, alice.keys.public_key));
+
+    EXPECT_EQ(mempool.size(), 3u);
+    EXPECT_TRUE(mempool.has_transaction(low.compute_hash()));
+    EXPECT_FALSE(mempool.has_transaction(too_cheap.compute_hash()));
+}
+
+TEST(Mempool, NeverEvictsAHigherFeeTransactionToMakeRoomForALowerOne) {
+    Mempool mempool(2);
+    Wallet alice = make_wallet();
+
+    Transaction high1 = make_signed_tx(alice, "r1", 10, 100);
+    Transaction high2 = make_signed_tx(alice, "r2", 10, 90);
+    ASSERT_TRUE(mempool.add_transaction(high1, alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(high2, alice.keys.public_key));
+
+    Transaction cheap = make_signed_tx(alice, "r3", 10, 2);
+    EXPECT_FALSE(mempool.add_transaction(cheap, alice.keys.public_key));
+
+    EXPECT_TRUE(mempool.has_transaction(high1.compute_hash()));
+    EXPECT_TRUE(mempool.has_transaction(high2.compute_hash()));
+    EXPECT_EQ(mempool.size(), 2u);
+}
+
+TEST(Mempool, BelowCapacityInsertsNeverTriggerEviction) {
+    Mempool mempool(100);
+    Wallet alice = make_wallet();
+
+    for (int i = 0; i < 5; ++i) {
+        Transaction tx = make_signed_tx(alice, "r" + std::to_string(i), 10,
+                                        static_cast<uint64_t>(i));
+        EXPECT_TRUE(mempool.add_transaction(tx, alice.keys.public_key));
+    }
+
+    EXPECT_EQ(mempool.size(), 5u);
 }

@@ -38,7 +38,7 @@ struct TestNode : Node {
   TestNode()
       : Node(0,
              VersionInfo{.protocol_version = 1, .chain_height = 0, .timestamp = 0, .listen_port = 0, .node_id = 0},
-             chain, mempool, orphan_pool, ledger) {}
+             chain, mempool, orphan_pool, ledger), mempool(1000) {}
 };
 
 struct TestWallet {
@@ -52,8 +52,8 @@ TestWallet make_test_wallet() {
 }
 
 Transaction make_signed_test_tx(const TestWallet &sender, const str &recipient,
-                                 uint64_t amount) {
-  Transaction tx(sender.address, recipient, amount, sender.keys.public_key);
+                                 uint64_t amount, uint64_t fee = 0) {
+  Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee);
   tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
   return tx;
 }
@@ -168,7 +168,7 @@ TEST(RpcServer, SubmitTxWithInvalidSignatureIsAcceptedByRpcButRejectedByMempool)
   TestWallet mallory = make_test_wallet();
   node.ledger.set_balance(alice.address, 1000);
 
-  Transaction tx(alice.address, "bob-address", 100, alice.keys.public_key);
+  Transaction tx(alice.address, "bob-address", 100, alice.keys.public_key, 0);
   tx.signature_ = sign(tx.serialize_for_signing(), mallory.keys.private_key);
   str hex = to_hex(tx.serialize());
   RpcServer server = make_server(node);
