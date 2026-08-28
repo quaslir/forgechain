@@ -31,7 +31,7 @@ struct OrchestratorConfig {
   static constexpr uint32_t mine_difficulty = 15;
   static constexpr size_t kMaxTxsPerBlock = 50;
   static constexpr size_t kMaxPending = 1000;
-    uint16_t rpc_port{0};
+  uint16_t rpc_port{0};
   crypto::str node_name = "NODE";
   crypto::str reward_address{};
 };

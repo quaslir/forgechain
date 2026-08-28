@@ -11,7 +11,7 @@ public:
   explicit Wallet(const crypto::str &path);
   [[nodiscard]] const crypto::str &address() const;
   [[nodiscard]] std::optional<bool> send(const crypto::str &recipient,
-                                         uint64_t amount,
+                                         uint64_t amount, uint64_t fee,
                                          const crypto::str &host,
                                          uint16_t port) const;
   [[nodiscard]] std::optional<crypto::str> balance(const crypto::str &host,

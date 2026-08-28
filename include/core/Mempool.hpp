@@ -8,8 +8,7 @@
 namespace forgechain::core {
 class Mempool {
 public:
-
-    Mempool(size_t max_size);
+  Mempool(size_t max_size);
 
   bool add_transaction(const Transaction &tx,
                        const crypto::bytes &sender_public_key);
@@ -23,12 +22,11 @@ public:
   [[nodiscard]] bool empty() const;
 
 private:
-    struct FeeDescendingComparator {
-        bool operator()(const Transaction&a, const Transaction& b) const {
-            return a.fee_ > b.fee_;
-        }
-    };
-
+  struct FeeDescendingComparator {
+    bool operator()(const Transaction &a, const Transaction &b) const {
+      return a.fee_ > b.fee_;
+    }
+  };
 
   std::multiset<Transaction, FeeDescendingComparator> pending_;
   size_t max_size_;

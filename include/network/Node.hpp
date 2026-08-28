@@ -17,12 +17,12 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <thread>
 #include <vector>
-#include <functional>
 namespace forgechain::network {
 
 struct PeerEntry {
@@ -57,7 +57,9 @@ public:
   transactions_for_block(size_t limit) const;
   [[nodiscard]] std::vector<core::Transaction> mempool_snapshot() const;
   void set_balance(const crypto::str &address, uint64_t amount);
-  void set_logger(std::function<void(const crypto::str&, const crypto::str&)> logger);
+  void set_logger(
+      std::function<void(const crypto::str &, const crypto::str &)> logger);
+
 private:
   void peer_loop(Peer *peer);
   void cleaner_loop();
@@ -96,6 +98,6 @@ private:
   mutable std::mutex chain_mutex_;
   mutable std::mutex orphan_mutex_;
 
-  std::function<void(const crypto::str&, const crypto::str&)> logger_;
+  std::function<void(const crypto::str &, const crypto::str &)> logger_;
 };
 } // namespace forgechain::network
