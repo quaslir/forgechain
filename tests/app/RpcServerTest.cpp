@@ -204,3 +204,75 @@ TEST(RpcServer, LeadingWhitespaceBeforeCommandIsTolerated) {
 
   EXPECT_EQ(server.handle_command("   HEIGHT"), "1");
 }
+
+TEST(RpcServer, NoTokenConfiguredCommandWorksWithoutAnyPrefix) {
+  TestNode node;
+  RpcServer server = make_server(node);
+
+  EXPECT_EQ(server.handle_command("HEIGHT"), "1");
+}
+
+TEST(RpcServer, TokenConfiguredCorrectTokenAllowsCommand) {
+  TestNode node;
+  RpcServer server = make_server(node);
+  server.set_api_key(str("secret123"));
+
+  EXPECT_EQ(server.handle_command("secret123 HEIGHT"), "1");
+}
+
+TEST(RpcServer, TokenConfiguredWrongTokenIsRejected) {
+  TestNode node;
+  RpcServer server = make_server(node);
+  server.set_api_key(str("secret123"));
+
+  EXPECT_EQ(server.handle_command("wrongtoken HEIGHT"), "ERROR unauthorized");
+}
+
+TEST(RpcServer, TokenConfiguredMissingTokenIsRejected) {
+  TestNode node;
+  RpcServer server = make_server(node);
+  server.set_api_key(str("secret123"));
+
+  EXPECT_EQ(server.handle_command("HEIGHT"), "ERROR unauthorized");
+}
+
+TEST(RpcServer, TokenConfiguredRejectionDoesNotRevealWhetherCommandWasValid) {
+  TestNode node;
+  RpcServer server = make_server(node);
+  server.set_api_key(str("secret123"));
+
+  EXPECT_EQ(server.handle_command("wrongtoken HEIGHT"),
+            server.handle_command("wrongtoken NOT_A_REAL_COMMAND"));
+}
+
+TEST(RpcServer, TokenCanBeChangedAtRuntime) {
+  TestNode node;
+  RpcServer server = make_server(node);
+  server.set_api_key(str("first-token"));
+  EXPECT_EQ(server.handle_command("first-token HEIGHT"), "1");
+
+  server.set_api_key(str("second-token"));
+  EXPECT_EQ(server.handle_command("first-token HEIGHT"), "ERROR unauthorized")
+      << "old token must stop working once a new one is set";
+  EXPECT_EQ(server.handle_command("second-token HEIGHT"), "1");
+}
+
+TEST(RpcServer, TokenWithGetBalanceCommandParsesRemainingArgumentsCorrectly) {
+  TestNode node;
+  node.ledger.set_balance("alice-address", 500);
+  RpcServer server = make_server(node);
+  server.set_api_key(str("secret123"));
+
+  EXPECT_EQ(server.handle_command("secret123 GETBALANCE alice-address"),
+            "500");
+}
+
+TEST(RpcServer, EmptyTokenAfterBeingSetDisablesAuthenticationAgain) {
+  TestNode node;
+  RpcServer server = make_server(node);
+  server.set_api_key(str("secret123"));
+  ASSERT_EQ(server.handle_command("HEIGHT"), "ERROR unauthorized");
+
+  server.set_api_key(str(""));
+  EXPECT_EQ(server.handle_command("HEIGHT"), "1");
+}
