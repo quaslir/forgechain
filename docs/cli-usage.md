@@ -16,6 +16,7 @@ plain-text RPC protocol that connects them.
 | `--mine-every` | `-m` | `<SECONDS>` | `0` (disabled) | Enable mining: attempt to mine a block every `N` seconds. Omit or pass `0` for a pure listening/relay node that never mines. |
 | `--reward-address` | `-r` | `<ADDRESS>` | none | Address that receives the coinbase mining reward for every block this node mines. If unset, mined blocks contain no coinbase transaction. The node never holds a private key for this address -- generate one separately with `wallet` and pass its printed address here. |
 | `--rpc-port` | `-R` | `<PORT>` | `0` (disabled) | Enable the RPC query server on this port (see §3). Separate from `--port`/the P2P port -- a client connecting here is never treated as a P2P peer. |
+| `--rpc-api-key` | `-K` | `<VALUE>` | none | Require this value as the first token on every RPC command (see §3). If unset, the RPC server is unauthenticated -- anyone who can reach the RPC port can issue any command. Can also be set/changed after startup via the interactive `set secret-key <value>` command, without restarting the node. |
 
 ### Shutdown
 
@@ -33,6 +34,7 @@ independent of mining/networking:
 | `balance <address>` | Print the current `Ledger` balance for `<address>`, or `unknown address` if it has none. |
 | `height` | Print the current chain height. |
 | `peers` | Print the number of currently connected P2P peers. |
+| `set secret-key <value>` | Set or change the RPC auth token at runtime, without restarting the node. Takes effect immediately for all subsequent RPC commands; the previous token (if any) stops working right away. Errors if RPC isn't enabled (`--rpc-port` wasn't given). |
 | `quit` / `exit` | Shut down the node cleanly. |
 
 ## 2. `wallet`
@@ -43,6 +45,7 @@ independent of mining/networking:
 |---|---|---|---|---|
 | `--keyfile` | `-k` | `<PATH>` | yes | Path to the wallet's keypair file. If the file doesn't exist, a fresh keypair is generated and saved there; if it exists, it's loaded. A malformed keyfile (wrong number of lines, invalid hex) throws and the wallet refuses to start rather than run with a corrupted key. |
 | `--connect` | `-c` | `<HOST> <PORT>` | yes | Address of the node's **RPC port** (the value passed to that node's `--rpc-port`, *not* its `--port`). All wallet commands talk to the node exclusively over this RPC channel. |
+| `--rpc-api-key` | `-K` | `<VALUE>` | no | Auth token to send with every RPC command, if the target node has one configured via its own `--rpc-api-key`/`set secret-key`. Omit if the node is unauthenticated. Can also be set/changed after startup via the interactive `set rpc-api-key <value>` command. |
 
 The wallet's own address (derived from the generated/loaded public key) is
 printed once at startup.
@@ -56,10 +59,11 @@ hex-encoded public key on the second.
 
 | Command | Description |
 |---|---|
-| `send <address> <amount>` | Build, sign, and submit a transaction sending `<amount>` from this wallet's address to `<address>`. Prints `sent` on success, `rejected by node` if the node's RPC server accepted the connection but rejected the transaction (e.g. malformed), or `network error` if the connection itself failed. |
+| `send <address> <amount> [fee]` | Build, sign, and submit a transaction sending `<amount>` from this wallet's address to `<address>`, with an optional `<fee>` (defaults to `0` if omitted). Prints `sent` on success, `rejected by node` if the node's RPC server accepted the connection but rejected the transaction (e.g. malformed), or `network error` if the connection itself failed. |
 | `balance` | Query and print this wallet's own balance via RPC. Prints `UNKNOWN` if the node has no record of this address, or `network error` on a connection failure. |
 | `height` | Query and print the connected node's current chain height. |
 | `peers` | Query and print the connected node's current P2P peer count. |
+| `set rpc-api-key <value>` | Set or change the RPC auth token sent with every subsequent command. Persists across `connect` (switching which node's RPC port to talk to does not clear the token). |
 | `quit` / `exit` | Exit the wallet. |
 
 ## 3. RPC protocol
@@ -70,6 +74,27 @@ one newline-terminated line, read one newline-terminated line back,
 disconnect. No handshake, no `VersionInfo` exchange -- an RPC client is never
 registered as a P2P peer and never appears in `peers` P2P peer counts.
 
+### Authentication
+
+If the node has an RPC token configured (via `--rpc-api-key` at startup, or
+`set secret-key <value>` while running), every command must be prefixed with
+that token as its own space-separated word:
+
+```
+<token> GETBALANCE <address>\n
+```
+
+A missing or incorrect token gets `ERROR unauthorized\n` -- the same
+response regardless of whether the command that followed would otherwise
+have been valid, so a client probing for the right token learns nothing
+about command validity from the response.
+
+If no token is configured, commands are sent exactly as documented below,
+with no prefix -- this is the default, and matches the node's behavior
+before this feature existed. The token can be changed at runtime without
+restarting the node; the previous token stops working the moment a new one
+is set.
+
 | Command | Request | Response |
 |---|---|---|
 | Get balance | `GETBALANCE <address>\n` | `<amount>\n` if known, `UNKNOWN\n` if not, `ERROR_EMPTY_ADDRESS\n` if no address was given |
@@ -77,6 +102,9 @@ registered as a P2P peer and never appears in `peers` P2P peer counts.
 | Chain height | `HEIGHT\n` | `<height>\n` |
 | Peer count | `PEERS\n` | `<count>\n` |
 | Anything else | -- | `ERROR_UNKNOWN_COMMAND\n` |
+
+(When a token is configured, prepend `<token> ` to any of the request lines
+above.)
 
 `OK` on `SUBMITTX` means the transaction was handed to the node for
 processing -- it does not guarantee the transaction is in the mempool or
@@ -104,4 +132,26 @@ closed.
 100
 >>> send <some-other-address> 25
 sent
+```
+
+### Example: with an RPC token
+
+```
+# Node A, started with a token baked in from the start
+./forgechain --port 8000 --rpc-port 8090 --mine-every 20 \
+  --reward-address <address> --rpc-api-key mysecret123
+
+# Wallet, given the same token up front
+./wallet --keyfile keys.txt --connect 127.0.0.1 8090 --rpc-api-key mysecret123
+>>> height
+5
+
+# Or set/change the token on either side after the fact, without restarting:
+# on the node's own stdin:
+>>> set secret-key newsecret456
+RPC secret key updated
+
+# on the wallet's stdin, to match:
+>>> set rpc-api-key newsecret456
+RPC API key set
 ```

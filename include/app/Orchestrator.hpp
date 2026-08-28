@@ -57,6 +57,7 @@ private:
   void handle_help_command();
   void handle_connect_to_peer(const crypto::str &host, uint16_t port);
   void handle_mempool_command();
+  void handle_set_secret_key_command(crypto::str&& key);
   OrchestratorConfig config_;
   demo::DemoLog log_;
   core::Blockchain chain_;

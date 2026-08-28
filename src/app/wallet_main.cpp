@@ -15,11 +15,8 @@
 #include <string_view>
 #include <utility>
 using namespace forgechain;
-
-struct Config {
-  network::PeerAddress address;
-  crypto::str keyfile_path;
-};
+using app::Config;
+using app::RpcConfiguration;
 
 Config parse_args(std::span<char *> argv) {
 
@@ -36,7 +33,7 @@ Config parse_args(std::span<char *> argv) {
       }
 
       address.port = static_cast<uint16_t>(*connect_port);
-      config.address = std::move(address);
+      config.rpc_config.address = std::move(address);
       i += 2;
     } else if (((view == "--keyfile") || (view == "-k")) &&
                i + 1 < argv.size()) {
@@ -46,6 +43,14 @@ Config parse_args(std::span<char *> argv) {
         throw std::invalid_argument("invalid path to keys");
       }
       config.keyfile_path = argv[i];
+    }
+    else if(((view == "--rpc-api-key") || (view == "-K")) && i + 1 < argv.size()) {
+        i++;
+        std::string_view api_key_view{argv[i]};
+        if(api_key_view.empty()) {
+            throw std::invalid_argument("empty api key");
+        }
+        config.rpc_config.rpc_api_key = api_key_view;
     }
   }
   if (config.keyfile_path.empty()) {
@@ -84,22 +89,24 @@ int main(int argc, char *argv[]) {
     if (command.empty())
       continue;
     else if (command == "help") {
-      std::cout << "commands:" << std::endl;
-      std::cout << "  send <address> <amount> (optional) <fee>  sign and submit a transaction"
-                << std::endl;
-      std::cout << "  balance                  show this wallet's balance"
-                << std::endl;
-      std::cout
-          << "  height                   show connected node's chain height"
-          << std::endl;
-      std::cout << "  peers                    show connected node's peer count"
-                << std::endl;
-      std::cout << "  connect <host> <port>    change which node's RPC port to "
-                   "talk to"
-                << std::endl;
-      std::cout << "  help                     show this message" << std::endl;
-      std::cout << "  quit / exit              exit the wallet" << std::endl;
-    } else if (command == "connect") {
+          std::cout << "commands:" << std::endl;
+          std::cout << "  send <address> <amount> [fee]  sign and submit a transaction"
+                    << std::endl;
+          std::cout << "  balance                  show this wallet's balance"
+                    << std::endl;
+          std::cout
+              << "  height                   show connected node's chain height"
+              << std::endl;
+          std::cout << "  peers                    show connected node's peer count"
+                    << std::endl;
+          std::cout << "  connect <host> <port>    change which node's RPC port to "
+                       "talk to"
+                    << std::endl;
+          std::cout << "  set rpc-api-key <value>  set the RPC auth token to send with requests"
+                    << std::endl;
+          std::cout << "  help                     show this message" << std::endl;
+          std::cout << "  quit / exit              exit the wallet" << std::endl;
+        } else if (command == "connect") {
       crypto::str host{}, port{};
       if (!(iss >> host >> port)) {
         std::cerr << "usage: connect <host> <port>" << std::endl;
@@ -112,14 +119,35 @@ int main(int argc, char *argv[]) {
         continue;
       }
 
-      config.address.host = std::move(host);
-      config.address.port = static_cast<uint16_t>(*port_number);
-      std::cout << "target set to " << config.address.host << ":"
-                << config.address.port << std::endl;
-    } else if (command == "exit" || command == "quit") {
+      config.rpc_config.address.host = std::move(host);
+      config.rpc_config.address.port = static_cast<uint16_t>(*port_number);
+      std::cout << "target set to " << config.rpc_config.address.host << ":"
+                << config.rpc_config.address.port << std::endl;
+    } else if (command == "set") {
+        crypto::str subcommand{};
+        iss >> subcommand;
+        if (subcommand.empty()) {
+            std::cerr << "usage: set rpc-api-key <value>" << std::endl;
+            continue;
+        }
+        if (subcommand == "rpc-api-key") {
+            crypto::str api_key{};
+            iss >> api_key;
+            if (api_key.empty()) {
+                std::cerr << "usage: set rpc-api-key <value>" << std::endl;
+                continue;
+            }
+            config.rpc_config.rpc_api_key = std::move(api_key);
+            std::cout << "RPC API key set" << std::endl;
+        } else {
+            std::cerr << "unknown set target: " << subcommand << std::endl;
+            continue;
+        }
+    }
+    else if (command == "exit" || command == "quit") {
       break;
     } else if (command == "balance") {
-      auto result = wallet->balance(config.address.host, config.address.port);
+      auto result = wallet->balance(config.rpc_config);
       if (result.has_value()) {
         std::cout << *result << std::endl;
       } else
@@ -129,7 +157,7 @@ int main(int argc, char *argv[]) {
       iss >> recipient >> amount_str >> fee_str;
 
       if (recipient.empty() || amount_str.empty()) {
-        std::cerr << "usage: send <address> <amount> (optional> <fee>"
+        std::cerr << "usage: send <address> <amount> (optional) <fee>"
                   << std::endl;
         continue;
       }
@@ -151,8 +179,7 @@ int main(int argc, char *argv[]) {
       }
 
       auto ok = wallet->send(recipient, static_cast<uint64_t>(*amount),
-                             static_cast<uint64_t>(fee), config.address.host,
-                             config.address.port);
+                             static_cast<uint64_t>(fee), config.rpc_config);
       if (!ok.has_value()) {
         std::cerr << "network error" << std::endl;
       } else if (*ok) {
@@ -163,13 +190,13 @@ int main(int argc, char *argv[]) {
 
     } else if (command == "peers") {
       auto peers_number =
-          wallet->peers(config.address.host, config.address.port);
+          wallet->peers(config.rpc_config);
       if (peers_number.has_value()) {
         std::cout << *peers_number << std::endl;
       } else
         std::cerr << "network error" << std::endl;
     } else if (command == "height") {
-      auto height = wallet->height(config.address.host, config.address.port);
+      auto height = wallet->height(config.rpc_config);
       if (height.has_value()) {
         std::cout << *height << std::endl;
       } else
