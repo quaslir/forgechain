@@ -17,6 +17,7 @@ function(add_forgechain_test_executable name)
         core
         network
         consensus
+        storage
         GTest::gtest_main
         project_warnings
     )
@@ -64,4 +65,11 @@ add_forgechain_test_executable(app_tests
     app/RpcServerTest.cpp
     app/WalletTest.cpp
 )
+
+add_forgechain_test_executable(storage_tests
+storage/SqliteConnectionTest.cpp
+storage/SqliteStatementTest.cpp
+)
+
+
 target_include_directories(app_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
