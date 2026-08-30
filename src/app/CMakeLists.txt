@@ -12,7 +12,7 @@ if(ENABLE_ASAN)
     target_link_libraries(forgechain PRIVATE project_sanitizers)
 endif()
 
-add_executable(wallet wallet_main.cpp Wallet.cpp)
+add_executable(wallet wallet_main.cpp Wallet.cpp WalletCli.cpp)
 
 target_link_libraries(wallet PRIVATE
     core

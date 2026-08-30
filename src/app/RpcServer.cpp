@@ -8,11 +8,11 @@
 #include "network/TcpSocket.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <utility>
-#include <mutex>
 namespace forgechain::app {
 RpcServer::RpcServer(network::Node &node, uint16_t port)
     : node_(node), port_(port) {}
@@ -64,14 +64,13 @@ crypto::str RpcServer::handle_command(const crypto::str &line) {
   crypto::str command{};
   iss >> command;
 
-if(api_key_required()) {
-    if(!check_api_key(command)) {
-        return "ERROR unauthorized";
+  if (api_key_required()) {
+    if (!check_api_key(command)) {
+      return "ERROR unauthorized";
     }
 
     iss >> command;
-}
-
+  }
 
   if (command == "GETBALANCE") {
     crypto::str address{};
@@ -109,20 +108,21 @@ if(api_key_required()) {
   return "ERROR_UNKNOWN_COMMAND";
 }
 
-void RpcServer::set_api_key(crypto::str&& api_key) {
-    std::lock_guard<std::mutex> api_key_lock(api_key_mutex_);
-    api_key_ = std::move(api_key);
+void RpcServer::set_api_key(crypto::str &&api_key) {
+  std::lock_guard<std::mutex> api_key_lock(api_key_mutex_);
+  api_key_ = std::move(api_key);
 }
 
-bool RpcServer::check_api_key(const crypto::str& provided_key) const {
- std::lock_guard<std::mutex> api_key_lock(api_key_mutex_);
- if(api_key_.empty()) return true;
- return api_key_ == provided_key;
+bool RpcServer::check_api_key(const crypto::str &provided_key) const {
+  std::lock_guard<std::mutex> api_key_lock(api_key_mutex_);
+  if (api_key_.empty())
+    return true;
+  return api_key_ == provided_key;
 }
 
 bool RpcServer::api_key_required() const {
- std::lock_guard<std::mutex> api_key_lock(api_key_mutex_);
- return !api_key_.empty();
+  std::lock_guard<std::mutex> api_key_lock(api_key_mutex_);
+  return !api_key_.empty();
 }
 
 void RpcServer::stop() {
