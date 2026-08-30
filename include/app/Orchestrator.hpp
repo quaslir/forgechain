@@ -6,17 +6,17 @@
 #include "core/Mempool.hpp"
 #include "core/OrphanPool.hpp"
 #include "crypto/CommonTypes.hpp"
-#include "crypto/Keys.hpp"
 #include "network/Node.hpp"
 #include "network/PeerAddress.hpp"
+#include "storage/Storage.hpp"
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <optional>
-#include <sstream>
 #include <thread>
 #include <vector>
+#include <string>
 namespace forgechain::app {
 
 struct OrchestratorConfig {
@@ -34,6 +34,7 @@ struct OrchestratorConfig {
   uint16_t rpc_port{0};
   crypto::str node_name = "NODE";
   crypto::str reward_address{};
+  std::string db_path{};
 };
 class Orchestrator {
 public:
@@ -60,6 +61,7 @@ private:
   void handle_set_secret_key_command(crypto::str &&key);
   OrchestratorConfig config_;
   demo::DemoLog log_;
+  std::optional<storage::Storage> storage_;
   core::Blockchain chain_;
   core::Mempool mempool_;
   core::OrphanPool orphan_pool_;

@@ -5,6 +5,7 @@ target_link_libraries(forgechain PRIVATE
     crypto
     consensus
     network
+    storage
     project_warnings
 )
 

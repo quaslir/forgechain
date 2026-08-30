@@ -69,6 +69,7 @@ add_forgechain_test_executable(app_tests
 add_forgechain_test_executable(storage_tests
 storage/SqliteConnectionTest.cpp
 storage/SqliteStatementTest.cpp
+storage/StorageTest.cpp
 )
 
 

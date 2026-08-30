@@ -2,6 +2,9 @@
 #include "core/Transaction.hpp"
 #include <cstdint>
 #include <optional>
+#include <utility>
+#include <vector>
+#include "crypto/CommonTypes.hpp"
 namespace forgechain::core {
 void Ledger::set_balance(const core::str &address, uint64_t amount) {
   balances_[address] = amount;
@@ -37,5 +40,14 @@ bool Ledger::reverse_transaction(const Transaction &tx) {
   }
 
   return true;
+}
+
+std::vector<std::pair<crypto::str, uint64_t>> Ledger::all_balances() const {
+std::vector<std::pair<crypto::str, uint64_t>> balances;
+balances.reserve(balances_.size());
+for(const auto& [address, amount] : balances_) {
+    balances.emplace_back(address, amount);
+}
+return balances;
 }
 } // namespace forgechain::core

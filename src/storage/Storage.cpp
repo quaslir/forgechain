@@ -52,7 +52,7 @@ namespace forgechain::storage {
 
             }
     void Storage::save_block(const core::Block& block, size_t height) {
-        SqliteStatement stmt(connection_, "INSERT INTO blocks (height, hash, serialized) VALUES (?, ?, ?)");
+        SqliteStatement stmt(connection_, "INSERT OR REPLACE INTO blocks (height, hash, serialized) VALUES (?, ?, ?)");
         if(!stmt.is_valid()) {
             throw std::runtime_error("failed to prepare INSERT for blocks");
         }

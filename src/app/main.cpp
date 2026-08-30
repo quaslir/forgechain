@@ -96,7 +96,15 @@ void parse_args(std::span<char *> argv,
       if (!reward_address.empty()) {
         config.reward_address = reward_address;
       }
-    } else {
+    } else if(((view == "--db-path") || view == "-d") &&
+               i + 1 < argv.size()) {
+                   i++;
+                   std::string_view db_path_view{argv[i]};
+if(!db_path_view.empty()) {
+    config.db_path = db_path_view;
+}
+    }
+    else {
       throw std::invalid_argument("invalid command argument");
     }
   }
