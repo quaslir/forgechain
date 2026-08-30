@@ -62,8 +62,10 @@ add_forgechain_test_executable(network_tests
 add_forgechain_test_executable(app_tests
     ${CMAKE_SOURCE_DIR}/src/app/RpcServer.cpp
      ${CMAKE_SOURCE_DIR}/src/app/Wallet.cpp
+     ${CMAKE_SOURCE_DIR}/src/app/Orchestrator.cpp
     app/RpcServerTest.cpp
     app/WalletTest.cpp
+    app/OrchestratorStorageTest.cpp
 )
 
 add_forgechain_test_executable(storage_tests
