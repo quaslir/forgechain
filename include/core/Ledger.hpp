@@ -4,6 +4,9 @@
 #include <cstdint>
 #include <optional>
 #include <unordered_map>
+#include <vector>
+#include <utility>
+
 namespace forgechain::core {
 class Ledger {
 public:
@@ -13,7 +16,7 @@ public:
 
   bool apply_transaction(const Transaction &tx);
   bool reverse_transaction(const Transaction &tx);
-
+  [[nodiscard]] std::vector<std::pair<crypto::str, uint64_t>> all_balances() const;
 private:
   std::unordered_map<str, uint64_t> balances_;
 };
