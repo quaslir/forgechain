@@ -56,14 +56,14 @@ if(FORGECHAIN_STATIC_OPENSSL)
 endif()
 
 find_package(OpenSSL REQUIRED)
-
-
+find_package(SQLite3 REQUIRED)
 
 add_subdirectory(src/app)
 add_subdirectory(src/core)
 add_subdirectory(src/crypto)
 add_subdirectory(src/consensus)
 add_subdirectory(src/network)
+add_subdirectory(src/storage)
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
