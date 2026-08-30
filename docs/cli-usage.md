@@ -17,12 +17,14 @@ plain-text RPC protocol that connects them.
 | `--reward-address` | `-r` | `<ADDRESS>` | none | Address that receives the coinbase mining reward for every block this node mines. If unset, mined blocks contain no coinbase transaction. The node never holds a private key for this address -- generate one separately with `wallet` and pass its printed address here. |
 | `--rpc-port` | `-R` | `<PORT>` | `0` (disabled) | Enable the RPC query server on this port (see §3). Separate from `--port`/the P2P port -- a client connecting here is never treated as a P2P peer. |
 | `--rpc-api-key` | `-K` | `<VALUE>` | none | Require this value as the first token on every RPC command (see §3). If unset, the RPC server is unauthenticated -- anyone who can reach the RPC port can issue any command. Can also be set/changed after startup via the interactive `set secret-key <value>` command, without restarting the node. |
+| `--db-path` | `-d` | `<PATH>` | none (disabled) | Enable persistent storage: the node's chain and account balances are saved to a SQLite database at this path on graceful shutdown, and restored from it on the next startup. If unset, the node runs entirely in memory and starts fresh every time, exactly as before this feature existed. Persistence only happens on a clean stop (`quit`/`exit`/Ctrl+C) -- state is not saved continuously, so an unclean exit (a crash, `kill -9`) loses everything since the last clean stop. |
 
 ### Shutdown
 
 `Ctrl+C` (SIGINT) triggers a graceful shutdown: mining and RPC threads are
-stopped and joined, all peer connections are closed, before the process
-exits.
+stopped and joined, all peer connections are closed, and -- if `--db-path`
+was given -- the current chain and balances are saved to disk, before the
+process exits.
 
 ### Interactive commands (stdin)
 
@@ -35,7 +37,7 @@ independent of mining/networking:
 | `height` | Print the current chain height. |
 | `peers` | Print the number of currently connected P2P peers. |
 | `set secret-key <value>` | Set or change the RPC auth token at runtime, without restarting the node. Takes effect immediately for all subsequent RPC commands; the previous token (if any) stops working right away. Errors if RPC isn't enabled (`--rpc-port` wasn't given). |
-| `quit` / `exit` | Shut down the node cleanly. |
+| `quit` / `exit` | Shut down the node cleanly (saves to disk first if `--db-path` was given). |
 
 ## 2. `wallet`
 
@@ -116,7 +118,28 @@ downstream, inside `Mempool`/`Ledger`.
 Lines longer than 4096 bytes are rejected with `ERROR` and the connection is
 closed.
 
-## 4. Example: two nodes and a wallet
+## 4. Persistent storage
+
+By default a node keeps its entire chain and ledger in memory and starts
+from a fresh genesis block every time it's launched. Passing `--db-path
+<path>` turns on persistence: the node's blocks and account balances are
+written to a SQLite database at that path, and read back to restore state
+the next time the node starts with the same `--db-path`.
+
+Persistence is snapshot-based, not continuous: state is written to disk
+once, when the node shuts down cleanly (`quit`, `exit`, or Ctrl+C), not
+after every mined block or transaction. This keeps the implementation
+simple and avoids touching disk on every state change, but it means an
+unclean exit -- a crash, `kill -9`, a power loss -- loses any blocks or
+balance changes since the last clean shutdown. The rest of the network is
+unaffected either way: a node that loses local state can always catch back
+up from its peers over the normal P2P sync path, the same as a node
+starting completely fresh.
+
+Two nodes should never be pointed at the same `--db-path` file
+simultaneously; each node's database is private to that single process.
+
+## 5. Example: two nodes and a wallet
 
 ```
 # Node A: listens on 8000, RPC on 8090, mines every 20s, pays itself
@@ -154,4 +177,19 @@ RPC secret key updated
 # on the wallet's stdin, to match:
 >>> set rpc-api-key newsecret456
 RPC API key set
+```
+
+### Example: with persistent storage
+
+```
+# First run: mines a few blocks, then shuts down cleanly.
+./forgechain --port 8000 --mine-every 5 --db-path node.db --reward-address <address>
+>>> height
+3
+>>> quit
+
+# Second run, same --db-path: chain height picks up where it left off.
+./forgechain --port 8000 --mine-every 5 --db-path node.db --reward-address <address>
+>>> height
+3
 ```
