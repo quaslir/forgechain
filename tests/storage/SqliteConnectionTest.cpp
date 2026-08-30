@@ -66,7 +66,10 @@ TEST(SqliteConnection, MoveAssignmentClosesPreviouslyOwnedConnection) {
 TEST(SqliteConnection, SelfMoveAssignmentDoesNotCrashOrInvalidate) {
   SqliteConnection conn(":memory:");
   ASSERT_TRUE(conn.is_valid());
-  conn = std::move(conn);
+
+
+  SqliteConnection &alias = conn;
+  conn = std::move(alias);
 
   EXPECT_TRUE(conn.is_valid());
 }
