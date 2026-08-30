@@ -144,20 +144,20 @@ void Orchestrator::run_command_loop() {
           continue;
         }
         handle_set_reward_address(address);
-      } else if(subcommand == "secret-key") {
-          crypto::str key{};
-          iss >> key;
-          if(key.empty()) {
-              std::cerr << "usage: set secret-key <value>" << std::endl;
-              continue;
-          }
+      } else if (subcommand == "secret-key") {
+        crypto::str key{};
+        iss >> key;
+        if (key.empty()) {
+          std::cerr << "usage: set secret-key <value>" << std::endl;
+          continue;
+        }
 
-          handle_set_secret_key_command(std::move(key));
-      }
-      else {
-          std::cerr << "unknown set target: " << subcommand
-                      << " (usage: set reward-address <address> | set secret-key <value>)"
-                      << std::endl;
+        handle_set_secret_key_command(std::move(key));
+      } else {
+        std::cerr
+            << "unknown set target: " << subcommand
+            << " (usage: set reward-address <address> | set secret-key <value>)"
+            << std::endl;
       }
     } else if (command == "connect") {
       crypto::str host{}, port{};
@@ -231,25 +231,25 @@ void Orchestrator::handle_set_reward_address(const crypto::str &address) {
   std::cout << "reward address set to " << address << std::endl;
 }
 void Orchestrator::handle_help_command() {
-    std::cout << "commands:" << std::endl;
-      std::cout << "  balance <address>        show Ledger balance for address"
-                << std::endl;
-      std::cout << "  height                    show current chain height"
-                << std::endl;
-      std::cout << "  peers                     show connected peer count"
-                << std::endl;
-      std::cout
-          << "  mempool                   show pending transactions in mempool"
-          << std::endl;
-      std::cout << "  status                    show node configuration"
-                << std::endl;
-      std::cout << "  set reward-address <addr> change mining reward address"
-                << std::endl;
-      std::cout << "  set secret-key <value>    set/change the RPC auth token"
-                << std::endl;
-      std::cout << "  connect <host> <port>     connect to a peer" << std::endl;
-      std::cout << "  help                      show this message" << std::endl;
-      std::cout << "  quit / exit               shut down the node" << std::endl;
+  std::cout << "commands:" << std::endl;
+  std::cout << "  balance <address>        show Ledger balance for address"
+            << std::endl;
+  std::cout << "  height                    show current chain height"
+            << std::endl;
+  std::cout << "  peers                     show connected peer count"
+            << std::endl;
+  std::cout
+      << "  mempool                   show pending transactions in mempool"
+      << std::endl;
+  std::cout << "  status                    show node configuration"
+            << std::endl;
+  std::cout << "  set reward-address <addr> change mining reward address"
+            << std::endl;
+  std::cout << "  set secret-key <value>    set/change the RPC auth token"
+            << std::endl;
+  std::cout << "  connect <host> <port>     connect to a peer" << std::endl;
+  std::cout << "  help                      show this message" << std::endl;
+  std::cout << "  quit / exit               shut down the node" << std::endl;
 }
 
 void Orchestrator::handle_connect_to_peer(const crypto::str &host,
@@ -268,17 +268,18 @@ void Orchestrator::handle_mempool_command() {
   }
   std::cout << txs.size() << " transaction(s):" << std::endl;
   for (const auto &tx : txs) {
-      std::cout << "  " << tx.sender_ << " -> " << tx.recipient_ << " : "
-                  << tx.amount_ << " (fee: " << tx.fee_ << ")" << std::endl;
+    std::cout << "  " << tx.sender_ << " -> " << tx.recipient_ << " : "
+              << tx.amount_ << " (fee: " << tx.fee_ << ")" << std::endl;
   }
 }
 
-void Orchestrator::handle_set_secret_key_command(crypto::str && key) {
-if(!rpc_server_.has_value()) {
-     std::cerr << "RPC is not enabled on this node (no --rpc-port given)" << std::endl;
-     return;
-}
-rpc_server_->set_api_key(std::move(key));
+void Orchestrator::handle_set_secret_key_command(crypto::str &&key) {
+  if (!rpc_server_.has_value()) {
+    std::cerr << "RPC is not enabled on this node (no --rpc-port given)"
+              << std::endl;
+    return;
+  }
+  rpc_server_->set_api_key(std::move(key));
 }
 
 void Orchestrator::stop() {

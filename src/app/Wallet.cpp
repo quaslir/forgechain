@@ -70,10 +70,12 @@ crypto::str Wallet::read_from(network::TcpSocket socket) {
 }
 
 std::optional<bool> Wallet::send(const crypto::str &recipient, uint64_t amount,
-                                 uint64_t fee, const RpcConfiguration& rpc_config) const {
+                                 uint64_t fee,
+                                 const RpcConfiguration &rpc_config) const {
   core::Transaction tx{address_, recipient, amount, keys_.public_key, fee};
   tx.signature_ = crypto::sign(tx.serialize_for_signing(), keys_.private_key);
-  network::TcpSocket socket = network::connect_to(rpc_config.address.host, rpc_config.address.port);
+  network::TcpSocket socket =
+      network::connect_to(rpc_config.address.host, rpc_config.address.port);
   if (!socket.is_valid())
     return std::nullopt;
 
@@ -88,12 +90,15 @@ std::optional<bool> Wallet::send(const crypto::str &recipient, uint64_t amount,
   return read_from(std::move(socket)) == "OK";
 }
 
-std::optional<crypto::str> Wallet::balance(const RpcConfiguration& rpc_config) const {
-  network::TcpSocket socket = network::connect_to(rpc_config.address.host, rpc_config.address.port);
+std::optional<crypto::str>
+Wallet::balance(const RpcConfiguration &rpc_config) const {
+  network::TcpSocket socket =
+      network::connect_to(rpc_config.address.host, rpc_config.address.port);
   if (!socket.is_valid()) {
     return std::nullopt;
   }
-  crypto::str command = rpc_config.rpc_api_key +" GETBALANCE " + address_ + '\n';
+  crypto::str command =
+      rpc_config.rpc_api_key + " GETBALANCE " + address_ + '\n';
   if (!network::send_exact(socket.fd(),
                            reinterpret_cast<const uint8_t *>(command.data()),
                            command.size())) {
@@ -103,13 +108,15 @@ std::optional<crypto::str> Wallet::balance(const RpcConfiguration& rpc_config) c
   return read_from(std::move(socket));
 }
 
-std::optional<crypto::str> Wallet::height(const RpcConfiguration& rpc_config) const {
-  network::TcpSocket socket = network::connect_to(rpc_config.address.host, rpc_config.address.port);
+std::optional<crypto::str>
+Wallet::height(const RpcConfiguration &rpc_config) const {
+  network::TcpSocket socket =
+      network::connect_to(rpc_config.address.host, rpc_config.address.port);
   if (!socket.is_valid()) {
     return std::nullopt;
   }
 
-  crypto::str command{ rpc_config.rpc_api_key + " HEIGHT\n"};
+  crypto::str command{rpc_config.rpc_api_key + " HEIGHT\n"};
   if (!network::send_exact(socket.fd(),
                            reinterpret_cast<const uint8_t *>(command.data()),
                            command.size())) {
@@ -118,8 +125,10 @@ std::optional<crypto::str> Wallet::height(const RpcConfiguration& rpc_config) co
 
   return read_from(std::move(socket));
 }
-[[nodiscard]] std::optional<crypto::str> Wallet::peers(const RpcConfiguration& rpc_config) const {
-  network::TcpSocket socket = network::connect_to(rpc_config.address.host, rpc_config.address.port);
+[[nodiscard]] std::optional<crypto::str>
+Wallet::peers(const RpcConfiguration &rpc_config) const {
+  network::TcpSocket socket =
+      network::connect_to(rpc_config.address.host, rpc_config.address.port);
   if (!socket.is_valid()) {
     return std::nullopt;
   }
