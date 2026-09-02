@@ -37,6 +37,8 @@ independent of mining/networking:
 | `height` | Print the current chain height. |
 | `peers` | Print the number of currently connected P2P peers. |
 | `set secret-key <value>` | Set or change the RPC auth token at runtime, without restarting the node. Takes effect immediately for all subsequent RPC commands; the previous token (if any) stops working right away. Errors if RPC isn't enabled (`--rpc-port` wasn't given). |
+| `set reward-address <address>` | Set or change the reward address where the miner receives the reward for a mined block. |
+
 | `quit` / `exit` | Shut down the node cleanly (saves to disk first if `--db-path` was given). |
 
 ## 2. `wallet`
