@@ -14,9 +14,9 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <thread>
 #include <vector>
-#include <string>
 namespace forgechain::app {
 
 struct OrchestratorConfig {

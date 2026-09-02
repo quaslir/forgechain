@@ -51,7 +51,8 @@ void Node::accept_loop() {
     accept_one_peer();
   }
 }
-void Node::peer_loop(Peer *peer) {
+void Node::peer_loop(std::shared_ptr<Peer> peer_owner) {
+  Peer *peer = peer_owner.get();
   while (running_ && peer->is_alive()) {
     Message msg;
     if (!receive_message(peer->socket().fd(), msg)) {
@@ -92,16 +93,22 @@ void Node::peer_loop(Peer *peer) {
 }
 void Node::cleaner_loop() {
   while (running_) {
+    std::vector<std::thread> workers_to_join;
     {
       std::lock_guard<std::mutex> lock(peers_mutex_);
-      for (auto &peer_entry : peers_) {
-        if (!peer_entry.peer->is_alive() && peer_entry.worker.joinable()) {
-          peer_entry.worker.join();
-        }
-      }
-      std::erase_if(peers_, [](const PeerEntry &peer_entry) {
-        return peer_entry.peer->is_alive() == false;
+      std::erase_if(peers_, [&workers_to_join](PeerEntry &peer_entry) {
+          if(peer_entry.peer->is_alive()) return false;
+
+          peer_entry.peer->socket().close_socket();
+          if (peer_entry.worker.joinable()) {
+            workers_to_join.push_back(std::move(peer_entry.worker));
+          }
+        return true;
       });
+    }
+
+    for (auto &worker : workers_to_join) {
+      worker.join();
     }
 
     std::this_thread::sleep_for(CLEANER_TIMEOUT);
@@ -154,7 +161,7 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
                   serialize_getblocks(my_height)))
       return false;
   }
-  std::thread worker{&Node::peer_loop, this, raw_peer};
+  std::thread worker{&Node::peer_loop, this, peer};
   std::vector<PeerAddress> addresses;
   std::vector<PeerAddress> new_peer_address{
       PeerAddress{.host = host, .port = incoming_info->listen_port}};
@@ -175,6 +182,7 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
           if (is_outbound) {
             old_worker = std::move(peers_[i].worker);
             peers_[i].peer->mark_dead();
+            peers_[i].peer->socket().close_socket();
             peers_[i].peer = std::move(peer);
             peers_[i].worker = std::move(worker);
             duplicate_found = true;
@@ -191,6 +199,7 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
           } else {
             old_worker = std::move(peers_[i].worker);
             peers_[i].peer->mark_dead();
+            peers_[i].peer->socket().close_socket();
             peers_[i].peer = std::move(peer);
             peers_[i].worker = std::move(worker);
             duplicate_found = true;
@@ -212,7 +221,8 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
           PeerEntry{.peer = std::move(peer), .worker = std::move(worker)});
     }
   }
-
+  if (old_worker.joinable())
+    old_worker.join();
   if (!accepted) {
     raw_peer->mark_dead();
 

@@ -61,7 +61,7 @@ public:
       std::function<void(const crypto::str &, const crypto::str &)> logger);
 
 private:
-  void peer_loop(Peer *peer);
+  void peer_loop(std::shared_ptr<Peer> peer_owner);
   void cleaner_loop();
   void ping_loop();
   bool send_msg(Peer *peer, MessageType type, const crypto::bytes &payload);

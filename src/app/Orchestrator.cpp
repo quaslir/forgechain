@@ -16,10 +16,10 @@
 #include <iostream>
 #include <mutex>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
-#include <stdexcept>
 namespace forgechain::app {
 
 Orchestrator::Orchestrator(OrchestratorConfig config)
@@ -32,25 +32,27 @@ Orchestrator::Orchestrator(OrchestratorConfig config)
                                  .listen_port = config_.listen_port,
                                  .node_id = network::generate_node_id()},
             chain_, mempool_, orphan_pool_, ledger_) {
-    if(!config_.db_path.empty()) {
-        storage_.emplace(config_.db_path);
+  if (!config_.db_path.empty()) {
+    storage_.emplace(config_.db_path);
+  }
+  if (storage_.has_value()) {
+    size_t size = storage_->block_count();
+    if (size > 1) {
+      for (size_t i = 1; i < size; i++) {
+        auto block = storage_->load_block(i);
+        if (!block.has_value()) {
+          throw std::runtime_error(
+              "storage corrupted: missing block at height " +
+              std::to_string(i));
+        }
+        chain_.add_block(std::move(*block));
+      }
     }
-    if(storage_.has_value()) {
-        size_t size = storage_->block_count();
-if(size > 1) {
-for(size_t i = 1; i < size; i++) {
-    auto block = storage_->load_block(i);
-    if(!block.has_value()) {
-        throw std::runtime_error("storage corrupted: missing block at height " + std::to_string(i));
+    auto balances = storage_->load_all_balances();
+    for (const auto &[address, amount] : balances) {
+      ledger_.set_balance(address, amount);
     }
-    chain_.add_block(std::move(*block));
-}
-}
-auto balances = storage_->load_all_balances();
-for(const auto&[address, amount] : balances) {
-ledger_.set_balance(address, amount);
-}
-    }
+  }
 
   node_.set_logger(
       [this](const crypto::str &category, const crypto::str &message) {
@@ -305,7 +307,7 @@ void Orchestrator::handle_set_secret_key_command(crypto::str &&key) {
 }
 
 void Orchestrator::stop() {
-    running_.store(false);
+  running_.store(false);
   if (mining_thread_.joinable()) {
     mining_thread_.join();
   }
@@ -314,19 +316,17 @@ void Orchestrator::stop() {
   }
   node_.stop();
 
-  if(storage_.has_value()) {
-      for(size_t i = 0; i < chain_.size(); i++) {
-          const auto& block = chain_.at(i);
-          storage_->save_block(block, i);
-      }
+  if (storage_.has_value()) {
+    for (size_t i = 0; i < chain_.size(); i++) {
+      const auto &block = chain_.at(i);
+      storage_->save_block(block, i);
+    }
     auto balances = ledger_.all_balances();
 
-    for(const auto&[address, amount] : balances ){
-        storage_->save_balance(address, amount);
+    for (const auto &[address, amount] : balances) {
+      storage_->save_balance(address, amount);
     }
   }
-
-
 }
 Orchestrator::~Orchestrator() { stop(); }
 
