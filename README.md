@@ -27,6 +27,9 @@ the network isn't perfect (latency, partitions, malicious peers).
 - [x] Interactive node CLI (`balance`/`height`/`peers`) via `Orchestrator`
 - [x] Standalone `wallet` (keypair generation/persistence, `send`/`balance`/`height`/`peers`)
 - [x] RPC query channel, separate from the P2P protocol, connecting `wallet` to a node
+- [x] Optional persistent storage based on SQLite for saving the chain and balances.
+- [x] Transaction fees and an eviction policy.
+- [x] Optional API key support for RPC.
 
 See `docs/cli-usage.md` for the full CLI reference (every flag and command
 on both `forgechain` and `wallet`), `docs/protocol.md` for the wire
