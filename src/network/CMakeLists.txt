@@ -11,6 +11,7 @@ Heartbeat.cpp
 Bootstrap.cpp
 PeerAddress.cpp
 NodeId.cpp
+AddressBook.cpp
 )
 
 target_include_directories(network PUBLIC

@@ -97,12 +97,13 @@ void Node::cleaner_loop() {
     {
       std::lock_guard<std::mutex> lock(peers_mutex_);
       std::erase_if(peers_, [&workers_to_join](PeerEntry &peer_entry) {
-          if(peer_entry.peer->is_alive()) return false;
+        if (peer_entry.peer->is_alive())
+          return false;
 
-          peer_entry.peer->socket().close_socket();
-          if (peer_entry.worker.joinable()) {
-            workers_to_join.push_back(std::move(peer_entry.worker));
-          }
+        peer_entry.peer->socket().close_socket();
+        if (peer_entry.worker.joinable()) {
+          workers_to_join.push_back(std::move(peer_entry.worker));
+        }
         return true;
       });
     }
