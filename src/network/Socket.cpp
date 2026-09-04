@@ -1,4 +1,5 @@
 #include "network/Socket.hpp"
+#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <sys/socket.h>
@@ -8,7 +9,14 @@ bool read_exact(int fd, uint8_t *buffer, size_t length) {
   size_t total_read = 0;
   while (total_read < length) {
     ssize_t n = recv(fd, buffer + total_read, length - total_read, 0);
-    if (n <= 0) {
+    if (n == 0) {
+      return false;
+    }
+    if (n < 0) {
+      if (errno == EINTR)
+        continue;
+      if (errno == EAGAIN || errno == EWOULDBLOCK)
+        continue;
       return false;
     }
 

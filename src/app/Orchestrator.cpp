@@ -75,19 +75,14 @@ bool Orchestrator::start() {
       rpc_server_.reset();
     }
   }
-  bool at_least_one_peer_connected{false};
   for (const auto &address : config_.addresses) {
-    if (node_.connect_to_peer(address.host, address.port)) {
-      at_least_one_peer_connected = true;
-    } else {
-      log_.log("PEER", "FAILED to connect to " + address.host + ":" +
-                           std::to_string(address.port));
-    }
+    node_.remember_peer(address.host, address.port);
   }
-  if (!at_least_one_peer_connected) {
-    log_.log(
-        "PEER",
-        "FAILED to connect to any configured peer -- continuing as listener");
+
+  if (!config_.addresses.empty()) {
+    log_.log("PEER", "bootstrapping from " +
+                         std::to_string(config_.addresses.size()) +
+                         " configured peer(s)");
   }
 
   return true;
