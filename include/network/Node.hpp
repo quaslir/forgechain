@@ -85,7 +85,7 @@ public:
   void handle_getblocks(Peer *peer, const crypto::bytes &payload);
   void handle_ping(Peer *peer);
   void handle_pong();
-  void handle_peers(const crypto::bytes &payload);
+  void handle_peers(Peer * peer, const crypto::bytes &payload);
   [[nodiscard]] bool apply_block_to_ledger(const core::Block &block);
   [[nodiscard]] bool already_connected(const crypto::str &host, uint16_t port) const;
   [[nodiscard]] size_t outbound_peer_count() const;

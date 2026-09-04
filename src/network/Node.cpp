@@ -87,7 +87,7 @@ void Node::peer_loop(std::shared_ptr<Peer> peer_owner) {
       break;
     case MessageType::PEERS:
 
-      handle_peers(msg.payload);
+      handle_peers(peer, msg.payload);
       break;
     default:
       break;
@@ -240,13 +240,21 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
     return false;
   }
   if(is_outbound) {
-      address_book_.add(PeerAddress{.host = host, .port = incoming_info->listen_port});
+      PeerAddress verified{.host = host, .port = incoming_info->listen_port};
+      address_book_.add(verified, true);
+      address_book_.mark_success(verified);
   }
   else if (logger_) {
       logger_("PEER", "inbound peer " + host + ":" +
                           std::to_string(incoming_info->listen_port));
   }
-send_msg(raw_peer, MessageType::PEERS, serialize_peer_list(address_book_.reachable()));
+
+  bool peer_is_local = !AddressBook::is_routable(PeerAddress{.host = host, .port = incoming_info->listen_port});
+    auto gossip = address_book_.reachable(peer_is_local);
+    std::erase_if(gossip, [&](const PeerAddress& a) {
+        return a.host == host && a.port == incoming_info->listen_port;
+    });
+send_msg(raw_peer, MessageType::PEERS, serialize_peer_list(gossip));
   if(is_outbound) {
       crypto::bytes payload = serialize_peer_list(std::vector<PeerAddress>{PeerAddress{.host = host, .port = incoming_info->listen_port}});
 
@@ -275,7 +283,7 @@ bool Node::connect_to_peer(const crypto::str &host, uint16_t port) {
   }
 
   if(already_connected(host, port)) return true;
-  address_book_.add(PeerAddress{.host = host, .port = port});
+  address_book_.add(PeerAddress{.host = host, .port = port}, true);
   TcpSocket socket = connect_to(host, port);
 
   return register_new_peer(std::move(socket), host, true);
@@ -450,13 +458,13 @@ void Node::handle_getblocks(Peer *peer, const crypto::bytes &payload) {
 void Node::handle_ping(Peer *peer) { send_msg(peer, MessageType::PONG, {}); }
 void Node::handle_pong() {}
 
-void Node::handle_peers(const crypto::bytes &payload) {
+void Node::handle_peers(Peer * peer, const crypto::bytes &payload) {
   auto list = deserialize_peer_list(payload);
   if (!list.has_value())
     return;
-
+  bool source_is_local = peer != nullptr && !AddressBook::is_routable(PeerAddress{.host = peer->host(), .port = peer->remote_version().listen_port});
   for (const auto &new_peer : *list) {
-      address_book_.add(new_peer);
+      address_book_.add(new_peer, source_is_local);
   }
 }
 
@@ -572,7 +580,7 @@ void Node::set_balance(const crypto::str &address, uint64_t amount) {
 }
 
 void Node::remember_peer(const crypto::str& host, uint16_t port) {
-    address_book_.add(PeerAddress{.host = host, .port = port});
+    address_book_.add(PeerAddress{.host = host, .port = port}, true);
 }
 
 void Node::set_logger(
