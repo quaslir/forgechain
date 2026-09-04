@@ -40,6 +40,7 @@ constexpr auto PING_TIMEOUT = std::chrono::seconds(45);
 
 constexpr auto CONNECT_INTERVAL = std::chrono::milliseconds(1000);
 constexpr size_t TARGET_OUTBOUND_PEERS = 8;
+constexpr auto GOSSIP_INTERVAL = std::chrono::seconds(30);
 class Node {
 public:
   Node(uint16_t listen_port, VersionInfo info, core::Blockchain &blockchain,
@@ -92,6 +93,9 @@ private:
   [[nodiscard]] size_t outbound_peer_count() const;
   std::optional<std::vector<crypto::HashBytes>>
   try_reorg(core::ForkChain &&fork_chain);
+  void gossip_peers();
+
+
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};

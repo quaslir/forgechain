@@ -83,6 +83,13 @@ void AddressBook::mark_failure(const PeerAddress &peer_address) {
   auto backoff = std::min(BASE_BACKOFF * (1 << shift), MAX_BACKOFF);
   entry->next_try = std::chrono::steady_clock::now() + backoff;
 }
+void AddressBook::defer(const PeerAddress& peer_address) {
+     std::lock_guard<std::mutex> book_lock(book_mutex_);
+     auto entry = find(peer_address);
+     if(!entry) return;
+     entry->in_progress = false;
+     entry->next_try = std::chrono::steady_clock::now() + BASE_BACKOFF;
+}
 std::vector<PeerAddress> AddressBook::reachable(bool include_local) const {
   std::lock_guard<std::mutex> book_lock(book_mutex_);
   std::vector<PeerAddress> active;

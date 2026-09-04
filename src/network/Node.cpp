@@ -17,6 +17,7 @@
 #include "network/PeerAddress.hpp"
 #include "network/TcpSocket.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -120,6 +121,7 @@ void Node::cleaner_loop() {
 }
 
 void Node::ping_loop() {
+    auto last_gossip = std::chrono::steady_clock::now();
   while (running_) {
     {
       std::lock_guard<std::mutex> lock(peers_mutex_);
@@ -137,6 +139,11 @@ void Node::ping_loop() {
       }
     }
 
+    if(std::chrono::steady_clock::now() - last_gossip >= GOSSIP_INTERVAL) {
+        gossip_peers();
+        last_gossip = std::chrono::steady_clock::now();
+    }
+
     std::this_thread::sleep_for(PING_INTERVAL);
   }
 }
@@ -148,7 +155,13 @@ void Node::connect_loop() {
       if (!candidate.has_value())
         break;
       if (already_connected(candidate->host, candidate->port)) {
-        address_book_.mark_success(*candidate);
+        TcpSocket probe = connect_to(candidate->host, candidate->port);
+        if(probe.is_valid()) {
+            address_book_.mark_success(*candidate);
+        }
+        else {
+            address_book_.mark_failure(*candidate);
+        }
         continue;
       }
       TcpSocket socket = connect_to(candidate->host, candidate->port);
@@ -252,10 +265,16 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
     PeerAddress verified{.host = host, .port = incoming_info->listen_port};
     address_book_.add(verified, true);
     address_book_.mark_success(verified);
-  } else if (logger_) {
-    logger_("PEER", "inbound peer " + host + ":" +
-                        std::to_string(incoming_info->listen_port));
+  }else {
+      PeerAddress candidate{.host = host, .port = incoming_info->listen_port};
+      bool source_is_local = !AddressBook::is_routable(candidate);
+      address_book_.add(candidate, source_is_local);
+      if (logger_) {
+        logger_("PEER", "inbound peer " + host + ":" +
+                            std::to_string(incoming_info->listen_port));
+      }
   }
+
 
   bool peer_is_local = !AddressBook::is_routable(
       PeerAddress{.host = host, .port = incoming_info->listen_port});
@@ -624,6 +643,35 @@ size_t Node::outbound_peer_count() const {
 
   return count;
 }
+
+void Node::gossip_peers() {
+        std::vector<std::shared_ptr<Peer>> targets;
+        {
+            std::lock_guard<std::mutex> peers_lock(peers_mutex_);
+
+
+
+            for(const auto& entry : peers_) {
+                if(entry.peer->is_alive()) targets.push_back(entry.peer);
+            }
+        }
+
+
+        for(const auto& target : targets) {
+            PeerAddress address{.host = target->host(), .port = target->remote_version().listen_port};
+            bool peer_is_local = !AddressBook::is_routable(address);
+            auto list = address_book_.reachable(peer_is_local);
+            std::erase_if(list, [&](const PeerAddress& addr) {
+                return address.host == addr.host && address.port == addr.port;
+            });
+
+            if(!list.empty()) {
+                send_msg(target.get(), MessageType::PEERS, serialize_peer_list(list));
+            }
+        }
+
+}
+
 
 void Node::stop() {
   running_.store(false);
