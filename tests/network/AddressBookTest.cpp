@@ -6,6 +6,7 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
+#include <algorithm>
 using forgechain::network::AddressBook;
 using forgechain::network::PeerAddress;
 
@@ -15,6 +16,7 @@ PeerAddress addr(const std::string &host, uint16_t port = 8000) {
   return PeerAddress{.host = host, .port = port};
 }
 
+// Fills the book with `count` distinct addresses by varying the port.
 void fill(AddressBook &book, size_t count) {
   for (size_t i = 0; i < count; ++i) {
     book.add(addr("8.8.8.8", static_cast<uint16_t>(i + 1)));
@@ -61,6 +63,7 @@ TEST(AddressBookRoutable, RespectsBoundariesFor192) {
 TEST(AddressBookRoutable, RejectsLinkLocal) {
   EXPECT_FALSE(AddressBook::is_routable(addr("169.254.0.1")));
   EXPECT_FALSE(AddressBook::is_routable(addr("169.254.255.255")));
+  // 169.253 and 169.255 are ordinary public addresses.
   EXPECT_TRUE(AddressBook::is_routable(addr("169.253.0.1")));
   EXPECT_TRUE(AddressBook::is_routable(addr("169.255.0.1")));
 }
@@ -76,6 +79,7 @@ TEST(AddressBookRoutable, RejectsZeroPortAndEmptyHost) {
   EXPECT_FALSE(AddressBook::is_routable(addr("8.8.8.8", 0)));
   EXPECT_FALSE(AddressBook::is_routable(addr("", 8000)));
 }
+
 TEST(AddressBookRoutable, RejectsMalformedInput) {
   EXPECT_FALSE(AddressBook::is_routable(addr("localhost")));
   EXPECT_FALSE(AddressBook::is_routable(addr("example.com")));
@@ -93,6 +97,7 @@ TEST(AddressBookRoutable, RejectsLeadingZeroOctets) {
   EXPECT_FALSE(AddressBook::is_routable(addr("010.0.0.1")));
   EXPECT_FALSE(AddressBook::is_routable(addr("127.00.0.1")));
 }
+
 
 TEST(AddressBookAdd, StoresRoutableAddress) {
   AddressBook book;
@@ -169,7 +174,7 @@ TEST(AddressBookSelect, EachAddressHandedOutOncePerRound) {
   EXPECT_FALSE(book.select_candidate().has_value());
 }
 
-TEST(AddressBookSelect, AvailableAgainAfterSuccess) {
+TEST(AddressBookSelect, NotReselectedImmediatelyAfterSuccess) {
   AddressBook book;
   auto address = addr("13.51.48.228");
   ASSERT_TRUE(book.add(address));
@@ -177,7 +182,37 @@ TEST(AddressBookSelect, AvailableAgainAfterSuccess) {
   ASSERT_TRUE(book.select_candidate().has_value());
   book.mark_success(address);
 
-  EXPECT_TRUE(book.select_candidate().has_value());
+  EXPECT_FALSE(book.select_candidate().has_value());
+}
+
+TEST(AddressBookSelect, SuccessCooldownIsShorterThanFailureBackoff) {
+  AddressBook book;
+  auto good = addr("13.51.48.228", 8000);
+  auto bad = addr("164.90.194.86", 8000);
+  ASSERT_TRUE(book.add(good));
+  ASSERT_TRUE(book.add(bad));
+
+  book.mark_success(good);
+  for (int i = 0; i < 3; ++i) {
+    book.mark_failure(bad);
+  }
+
+  EXPECT_FALSE(book.select_candidate().has_value());
+}
+
+TEST(AddressBookSelect, SuccessResetsFailureCount) {
+  AddressBook book;
+  auto address = addr("13.51.48.228");
+  ASSERT_TRUE(book.add(address));
+
+  for (int i = 0; i < AddressBook::MAX_FAILURES - 1; ++i) {
+    book.mark_failure(address);
+  }
+  book.mark_success(address);
+
+  book.mark_failure(address);
+  book.mark_success(address);
+  EXPECT_EQ(book.reachable().size(), 1u);
 }
 
 TEST(AddressBookSelect, NotAvailableImmediatelyAfterFailure) {
@@ -225,7 +260,6 @@ TEST(AddressBookSelect, MarkOnUnknownAddressIsHarmless) {
   book.mark_failure(addr("164.90.194.86"));
   EXPECT_EQ(book.size(), 0u);
 }
-
 
 TEST(AddressBookReachable, EmptyByDefault) {
   AddressBook book;

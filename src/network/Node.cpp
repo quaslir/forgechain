@@ -142,41 +142,42 @@ void Node::ping_loop() {
 }
 
 void Node::connect_loop() {
-while(running_)  {
-    while(outbound_peer_count() < TARGET_OUTBOUND_PEERS) {
-        auto candidate = address_book_.select_candidate();
-        if(!candidate.has_value()) break;
-        if(already_connected(candidate->host, candidate->port)) {
-            address_book_.mark_success(*candidate);
-            continue;
+  while (running_) {
+    while (outbound_peer_count() < TARGET_OUTBOUND_PEERS) {
+      auto candidate = address_book_.select_candidate();
+      if (!candidate.has_value())
+        break;
+      if (already_connected(candidate->host, candidate->port)) {
+        address_book_.mark_success(*candidate);
+        continue;
+      }
+      TcpSocket socket = connect_to(candidate->host, candidate->port);
+      if (!socket.is_valid()) {
+        address_book_.mark_failure(*candidate);
+        if (logger_) {
+          logger_("PEER", "dial failed " + candidate->host + ":" +
+                              std::to_string(candidate->port));
         }
-       TcpSocket socket =  connect_to(candidate->host, candidate->port);
-       if(!socket.is_valid()) {
-            address_book_.mark_failure(*candidate);
-            if (logger_) {
-              logger_("PEER", "dial failed " + candidate->host + ":" +
-                                  std::to_string(candidate->port));
-            }
-           continue;
-       }
-       bool res = register_new_peer(std::move(socket), candidate->host, true);
-       if(res) {
-           address_book_.mark_success(*candidate);
-           if (logger_) {
-             logger_("PEER", "connected to " + candidate->host + ":" +
-                                 std::to_string(candidate->port));
-           }
-       } else {
-           address_book_.mark_failure(*candidate);
-           if (logger_) {
-             logger_("PEER", "dial failed " + candidate->host + ":" +
-                                 std::to_string(candidate->port));
-           }
-       }
+        continue;
+      }
+      bool res = register_new_peer(std::move(socket), candidate->host, true);
+      if (res) {
+        address_book_.mark_success(*candidate);
+        if (logger_) {
+          logger_("PEER", "connected to " + candidate->host + ":" +
+                              std::to_string(candidate->port));
+        }
+      } else {
+        address_book_.mark_failure(*candidate);
+        if (logger_) {
+          logger_("PEER", "dial failed " + candidate->host + ":" +
+                              std::to_string(candidate->port));
+        }
+      }
     }
 
     std::this_thread::sleep_for(CONNECT_INTERVAL);
-}
+  }
 }
 
 bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
@@ -193,7 +194,8 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
   auto incoming_info = perform_handshake(socket.fd(), current_info);
   if (!incoming_info.has_value())
     return false;
-  if(info_.node_id == incoming_info->node_id) return false;
+  if (info_.node_id == incoming_info->node_id)
+    return false;
   auto peer = std::make_shared<Peer>(std::move(socket), *incoming_info, host);
   Peer *raw_peer = peer.get();
 
@@ -208,59 +210,67 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
   {
     std::lock_guard<std::mutex> peers_lock(peers_mutex_);
     for (size_t i = 0; i < peers_.size(); i++) {
-        if(!peers_[i].peer->is_alive() || peers_[i].peer->remote_version().listen_port == 0) continue;
-        if(peers_[i].peer->host() != host || peers_[i].peer->remote_version().listen_port != incoming_info->listen_port) continue;
+      if (!peers_[i].peer->is_alive() ||
+          peers_[i].peer->remote_version().listen_port == 0)
+        continue;
+      if (peers_[i].peer->host() != host ||
+          peers_[i].peer->remote_version().listen_port !=
+              incoming_info->listen_port)
+        continue;
       bool keep_new = (info_.node_id < incoming_info->node_id) == is_outbound;
-      if(!keep_new) {
-          accepted = false;
-      }
-      else {
-          peers_[i].peer->mark_dead();
-          peers_[i].peer->socket().close_socket();
+      if (!keep_new) {
+        accepted = false;
+      } else {
+        peers_[i].peer->mark_dead();
+        peers_[i].peer->socket().close_socket();
       }
       break;
     }
 
     if (accepted) {
-        if(is_outbound) {
-            for (const auto &my_peer : peers_) {
-                if(!my_peer.peer->is_alive()) continue;
-              to_send.push_back(my_peer.peer);
-            }
+      if (is_outbound) {
+        for (const auto &my_peer : peers_) {
+          if (!my_peer.peer->is_alive())
+            continue;
+          to_send.push_back(my_peer.peer);
         }
+      }
 
       peers_.push_back(
-          PeerEntry{.peer = peer, .worker = std::thread{&Node::peer_loop, this, peer}, .is_outbound = is_outbound});
+          PeerEntry{.peer = peer,
+                    .worker = std::thread{&Node::peer_loop, this, peer},
+                    .is_outbound = is_outbound});
     }
   }
   if (!accepted) {
-      if (logger_) {
-          logger_("PEER", "duplicate connection dropped " + host);
-        }
+    if (logger_) {
+      logger_("PEER", "duplicate connection dropped " + host);
+    }
     return false;
   }
-  if(is_outbound) {
-      PeerAddress verified{.host = host, .port = incoming_info->listen_port};
-      address_book_.add(verified, true);
-      address_book_.mark_success(verified);
-  }
-  else if (logger_) {
-      logger_("PEER", "inbound peer " + host + ":" +
-                          std::to_string(incoming_info->listen_port));
+  if (is_outbound) {
+    PeerAddress verified{.host = host, .port = incoming_info->listen_port};
+    address_book_.add(verified, true);
+    address_book_.mark_success(verified);
+  } else if (logger_) {
+    logger_("PEER", "inbound peer " + host + ":" +
+                        std::to_string(incoming_info->listen_port));
   }
 
-  bool peer_is_local = !AddressBook::is_routable(PeerAddress{.host = host, .port = incoming_info->listen_port});
-    auto gossip = address_book_.reachable(peer_is_local);
-    std::erase_if(gossip, [&](const PeerAddress& a) {
-        return a.host == host && a.port == incoming_info->listen_port;
-    });
-send_msg(raw_peer, MessageType::PEERS, serialize_peer_list(gossip));
-  if(is_outbound) {
-      crypto::bytes payload = serialize_peer_list(std::vector<PeerAddress>{PeerAddress{.host = host, .port = incoming_info->listen_port}});
+  bool peer_is_local = !AddressBook::is_routable(
+      PeerAddress{.host = host, .port = incoming_info->listen_port});
+  auto gossip = address_book_.reachable(peer_is_local);
+  std::erase_if(gossip, [&](const PeerAddress &a) {
+    return a.host == host && a.port == incoming_info->listen_port;
+  });
+  send_msg(raw_peer, MessageType::PEERS, serialize_peer_list(gossip));
+  if (is_outbound) {
+    crypto::bytes payload = serialize_peer_list(std::vector<PeerAddress>{
+        PeerAddress{.host = host, .port = incoming_info->listen_port}});
 
-      for (const auto &peer_to_send : to_send) {
-        send_msg(peer_to_send.get(), MessageType::PEERS, payload);
-      }
+    for (const auto &peer_to_send : to_send) {
+      send_msg(peer_to_send.get(), MessageType::PEERS, payload);
+    }
   }
 
   return true;
@@ -282,7 +292,8 @@ bool Node::connect_to_peer(const crypto::str &host, uint16_t port) {
     return false;
   }
 
-  if(already_connected(host, port)) return true;
+  if (already_connected(host, port))
+    return true;
   address_book_.add(PeerAddress{.host = host, .port = port}, true);
   TcpSocket socket = connect_to(host, port);
 
@@ -458,13 +469,16 @@ void Node::handle_getblocks(Peer *peer, const crypto::bytes &payload) {
 void Node::handle_ping(Peer *peer) { send_msg(peer, MessageType::PONG, {}); }
 void Node::handle_pong() {}
 
-void Node::handle_peers(Peer * peer, const crypto::bytes &payload) {
+void Node::handle_peers(Peer *peer, const crypto::bytes &payload) {
   auto list = deserialize_peer_list(payload);
   if (!list.has_value())
     return;
-  bool source_is_local = peer != nullptr && !AddressBook::is_routable(PeerAddress{.host = peer->host(), .port = peer->remote_version().listen_port});
+  bool source_is_local =
+      peer != nullptr &&
+      !AddressBook::is_routable(PeerAddress{
+          .host = peer->host(), .port = peer->remote_version().listen_port});
   for (const auto &new_peer : *list) {
-      address_book_.add(new_peer, source_is_local);
+    address_book_.add(new_peer, source_is_local);
   }
 }
 
@@ -579,8 +593,8 @@ void Node::set_balance(const crypto::str &address, uint64_t amount) {
   ledger_.set_balance(address, amount);
 }
 
-void Node::remember_peer(const crypto::str& host, uint16_t port) {
-    address_book_.add(PeerAddress{.host = host, .port = port}, true);
+void Node::remember_peer(const crypto::str &host, uint16_t port) {
+  address_book_.add(PeerAddress{.host = host, .port = port}, true);
 }
 
 void Node::set_logger(
@@ -588,28 +602,28 @@ void Node::set_logger(
   logger_ = std::move(logger);
 }
 
-
 bool Node::already_connected(const crypto::str &host, uint16_t port) const {
-std::lock_guard<std::mutex> peers_lock(peers_mutex_);
+  std::lock_guard<std::mutex> peers_lock(peers_mutex_);
 
-for(const auto& entry : peers_) {
-    if(entry.peer->is_alive() && entry.peer->host() == host && entry.peer->remote_version().listen_port == port) return true;
-}
+  for (const auto &entry : peers_) {
+    if (entry.peer->is_alive() && entry.peer->host() == host &&
+        entry.peer->remote_version().listen_port == port)
+      return true;
+  }
 
-return false;
+  return false;
 }
 size_t Node::outbound_peer_count() const {
-    size_t count{0};
-    std::lock_guard<std::mutex> peers_lock(peers_mutex_);
+  size_t count{0};
+  std::lock_guard<std::mutex> peers_lock(peers_mutex_);
 
-    for(const auto& entry : peers_) {
-        if(entry.is_outbound && entry.peer->is_alive()) count++;
-    }
+  for (const auto &entry : peers_) {
+    if (entry.is_outbound && entry.peer->is_alive())
+      count++;
+  }
 
-    return count;
+  return count;
 }
-
-
 
 void Node::stop() {
   running_.store(false);
@@ -637,8 +651,8 @@ void Node::stop() {
 }
 Node::~Node() {
   stop();
-  if(connect_thread_.joinable()) {
-      connect_thread_.join();
+  if (connect_thread_.joinable()) {
+    connect_thread_.join();
   }
   if (accept_thread_.joinable()) {
     accept_thread_.join();
@@ -649,6 +663,5 @@ Node::~Node() {
   if (ping_thread_.joinable()) {
     ping_thread_.join();
   }
-
 }
 } // namespace forgechain::network

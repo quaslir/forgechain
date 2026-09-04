@@ -35,7 +35,8 @@ bool AddressBook::is_routable(const PeerAddress &peer_address) {
 }
 
 bool AddressBook::add(const PeerAddress &peer_address, bool trusted) {
-    if(peer_address.host.empty() || peer_address.port == 0) return false;
+  if (peer_address.host.empty() || peer_address.port == 0)
+    return false;
   if (!trusted && !is_routable(peer_address))
     return false;
   std::lock_guard<std::mutex> book_lock(book_mutex_);

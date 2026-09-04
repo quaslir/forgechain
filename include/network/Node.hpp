@@ -63,11 +63,11 @@ public:
   transactions_for_block(size_t limit) const;
   [[nodiscard]] std::vector<core::Transaction> mempool_snapshot() const;
   void set_balance(const crypto::str &address, uint64_t amount);
-  void remember_peer(const crypto::str& host, uint16_t port);
+  void remember_peer(const crypto::str &host, uint16_t port);
   void set_logger(
       std::function<void(const crypto::str &, const crypto::str &)> logger);
 
-    private:
+private:
   void peer_loop(std::shared_ptr<Peer> peer_owner);
   void cleaner_loop();
   void ping_loop();
@@ -85,9 +85,10 @@ public:
   void handle_getblocks(Peer *peer, const crypto::bytes &payload);
   void handle_ping(Peer *peer);
   void handle_pong();
-  void handle_peers(Peer * peer, const crypto::bytes &payload);
+  void handle_peers(Peer *peer, const crypto::bytes &payload);
   [[nodiscard]] bool apply_block_to_ledger(const core::Block &block);
-  [[nodiscard]] bool already_connected(const crypto::str &host, uint16_t port) const;
+  [[nodiscard]] bool already_connected(const crypto::str &host,
+                                       uint16_t port) const;
   [[nodiscard]] size_t outbound_peer_count() const;
   std::optional<std::vector<crypto::HashBytes>>
   try_reorg(core::ForkChain &&fork_chain);

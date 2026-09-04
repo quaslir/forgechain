@@ -76,12 +76,13 @@ bool Orchestrator::start() {
     }
   }
   for (const auto &address : config_.addresses) {
-      node_.remember_peer(address.host, address.port);
+    node_.remember_peer(address.host, address.port);
   }
 
-  if(!config_.addresses.empty()) {
-      log_.log("PEER", "bootstrapping from " +
-                             std::to_string(config_.addresses.size()) + " configured peer(s)");
+  if (!config_.addresses.empty()) {
+    log_.log("PEER", "bootstrapping from " +
+                         std::to_string(config_.addresses.size()) +
+                         " configured peer(s)");
   }
 
   return true;
