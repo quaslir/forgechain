@@ -23,7 +23,7 @@ public:
   static constexpr auto BASE_BACKOFF = std::chrono::seconds(5);
   static constexpr auto MAX_BACKOFF = std::chrono::seconds(600);
 
-  bool add(const PeerAddress &peer_address);
+  bool add(const PeerAddress &peer_address, bool trusted = false);
   std::optional<PeerAddress> select_candidate();
   void mark_success(const PeerAddress &peer_address);
   void mark_failure(const PeerAddress &peer_address);

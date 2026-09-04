@@ -203,9 +203,6 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
                   serialize_getblocks(my_height)))
       return false;
   }
-  std::vector<PeerAddress> new_peer_address{
-      PeerAddress{.host = host, .port = incoming_info->listen_port}};
-  crypto::bytes payload = serialize_peer_list(new_peer_address);
   std::vector<std::shared_ptr<Peer>> to_send;
   bool accepted{true};
   {
@@ -225,10 +222,13 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
     }
 
     if (accepted) {
-      for (const auto &my_peer : peers_) {
-          if(!my_peer.peer->is_alive()) continue;
-        to_send.push_back(my_peer.peer);
-      }
+        if(is_outbound) {
+            for (const auto &my_peer : peers_) {
+                if(!my_peer.peer->is_alive()) continue;
+              to_send.push_back(my_peer.peer);
+            }
+        }
+
       peers_.push_back(
           PeerEntry{.peer = peer, .worker = std::thread{&Node::peer_loop, this, peer}, .is_outbound = is_outbound});
     }
@@ -241,13 +241,15 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
   }
   if(is_outbound) {
       address_book_.add(PeerAddress{.host = host, .port = incoming_info->listen_port});
-      if (logger_ && !is_outbound) {
-        logger_("PEER", "inbound peer " + host + ":" +
-                            std::to_string(incoming_info->listen_port));
-      }
   }
-  send_msg(raw_peer, MessageType::PEERS, serialize_peer_list(address_book_.reachable()));
+  else if (logger_) {
+      logger_("PEER", "inbound peer " + host + ":" +
+                          std::to_string(incoming_info->listen_port));
+  }
+send_msg(raw_peer, MessageType::PEERS, serialize_peer_list(address_book_.reachable()));
   if(is_outbound) {
+      crypto::bytes payload = serialize_peer_list(std::vector<PeerAddress>{PeerAddress{.host = host, .port = incoming_info->listen_port}});
+
       for (const auto &peer_to_send : to_send) {
         send_msg(peer_to_send.get(), MessageType::PEERS, payload);
       }
@@ -567,6 +569,10 @@ std::vector<core::Transaction> Node::mempool_snapshot() const {
 void Node::set_balance(const crypto::str &address, uint64_t amount) {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
   ledger_.set_balance(address, amount);
+}
+
+void Node::remember_peer(const crypto::str& host, uint16_t port) {
+    address_book_.add(PeerAddress{.host = host, .port = port});
 }
 
 void Node::set_logger(

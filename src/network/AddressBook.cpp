@@ -34,8 +34,9 @@ bool AddressBook::is_routable(const PeerAddress &peer_address) {
   return true;
 }
 
-bool AddressBook::add(const PeerAddress &peer_address) {
-  if (!is_routable(peer_address))
+bool AddressBook::add(const PeerAddress &peer_address, bool trusted) {
+    if(peer_address.host.empty() || peer_address.port == 0) return false;
+  if (!trusted && !is_routable(peer_address))
     return false;
   std::lock_guard<std::mutex> book_lock(book_mutex_);
   if (book_.size() >= MAX_ENTRIES)
@@ -84,7 +85,7 @@ std::vector<PeerAddress> AddressBook::reachable() const {
   std::lock_guard<std::mutex> book_lock(book_mutex_);
   std::vector<PeerAddress> active;
   for (const auto &entry : book_) {
-    if (entry.succeeded)
+    if (entry.succeeded && is_routable(entry.address))
       active.push_back(entry.address);
   }
 

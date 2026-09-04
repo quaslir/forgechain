@@ -50,8 +50,9 @@ an implementation detail of `#20`, not fixed here, but it must exist.
 | `0x05` | `GETBLOCKS` | §3.5 | Request all blocks after a given known block hash (sync). |
 | `0x06` | `PING` | §3.6 | Liveness check. |
 | `0x07` | `PONG` | §3.6 | Response to `PING`. |
+| `0x08` | `PEERS` | §3.7 | Share known, reachability-verified peer addresses. |
 
-Codes `0x08`–`0xFF` are reserved for future message types.
+Codes `0x09`–`0xFF` are reserved for future message types.
 
 ## 3. Payload formats
 
@@ -65,8 +66,10 @@ message is processed (see §4 for the handshake sequence).
 | `protocol_version` | 4 bytes | `uint32` | Version of this protocol spec the sender implements. Starts at `1`. |
 | `chain_height` | 8 bytes | `uint64` | Height of the sender's current best chain (number of blocks, including genesis). |
 | `timestamp` | 8 bytes | `uint64` | Sender's current Unix timestamp (seconds). |
+| `listen_port` | 2 bytes | `uint16` | The port this node accepts inbound connections on. Needed because an inbound connection's source port is ephemeral and says nothing about where the peer can be reached. A node that does not accept inbound connections sends `0`. |
+| `node_id` | 8 bytes | `uint64` | Randomly generated per node instance. Identifies the node independently of its address — see §4.1 and §6. |
 
-Total: 20 bytes.
+Total: 30 bytes.
 
 ### 3.2 `INV` / `GETDATA`
 
@@ -133,13 +136,46 @@ guarantee (see the note already on file about this in
 
 | Field | Size | Type | Description |
 |---|---|---|---|
-| `last_known_hash` | 32 bytes | raw bytes | Hash of the most recent block the requester already has. The responder replies with `INV` messages for everything after it, up to its own chain tip. |
+| `from_height` | 8 bytes | `uint64` | Height the requester wants blocks from. The responder sends one `BLOCK` message per block from that height up to its own chain tip. |
+
+Note: this is a height, not a hash. Sending a height is simpler but
+assumes both sides agree on the chain below that point; a hash-based
+locator would be more robust against forks and is a candidate for a
+future protocol version.
 
 ### 3.6 `PING` / `PONG`
 
+Both carry an **empty payload** (`payload_len = 0`). A node sends `PING`
+to a peer that has been silent for longer than `PING_INTERVAL` and marks
+it dead once silence exceeds `PING_TIMEOUT`; any received message counts
+as liveness evidence, so no nonce correlation is needed.
+
+### 3.7 `PEERS`
+
+Carries a list of peer addresses. Sent unsolicited after a connection is
+established (§5.1); there is no request message for it.
+
 | Field | Size | Type | Description |
 |---|---|---|---|
-| `nonce` | 8 bytes | `uint64` | Arbitrary value chosen by the sender of `PING`; echoed back unchanged in the matching `PONG`, so the sender can match responses to requests and measure round-trip time. |
+| `count` | 4 bytes | `uint32` | Number of entries that follow. |
+| entries | variable | array | `count` length-delimited entries, see below. |
+
+Each entry:
+
+| Field | Size | Type | Description |
+|---|---|---|---|
+| `entry_len` | 4 bytes | `uint32` | Byte length of the encoded address that follows. |
+| `port` | 2 bytes | `uint16` | The peer's `listen_port`. |
+| `host_len` | 4 bytes | `uint32` | Byte length of `host`. |
+| `host` | `host_len` bytes | ASCII string | Dotted-quad IPv4 literal, e.g. `"13.51.48.228"`. |
+
+The outer `entry_len` makes each entry independently skippable, so a
+malformed or unrecognised entry does not desynchronise parsing of the
+rest of the list.
+
+**Which addresses may be sent is constrained — see §5.1.** A receiver
+must not assume the sender followed those rules and applies its own
+filtering (§5.2) regardless.
 
 ## 4. Handshake sequence
 
@@ -172,6 +208,31 @@ Rules:
   `GETBLOCKS`; the side with the higher height simply waits to see if a
   sync request arrives.
 
+### 4.1 Self-connection and crossed connections
+
+Because addresses propagate via `PEERS`, a node can end up dialing its
+own advertised address. After the `VERSION` exchange, a node that sees
+its own `node_id` in the peer's `VERSION` closes the connection. An
+address-based check is not sufficient: a node does not reliably know its
+own public address.
+
+Two nodes can also dial each other simultaneously, producing two TCP
+connections between the same pair. Both sides detect this by finding an
+existing live peer with the same `host` and `listen_port`, and must
+independently arrive at the *same* verdict about which connection
+survives, or they will either both drop (leaving the pair disconnected)
+or both keep (leaving a redundant link). The rule is:
+
+```
+keep_new = (my_node_id < their_node_id) == connection_is_outbound
+```
+
+Since exactly one side of any given connection sees it as outbound, and
+the `node_id` comparison is antisymmetric, both nodes select the same
+surviving connection. The losing connection is closed by whichever side
+holds it; the peer entry is marked dead and reaped asynchronously rather
+than being replaced in place.
+
 ## 5. Propagation (gossip)
 
 After the initial handshake and sync, new blocks and transactions are
@@ -195,22 +256,103 @@ A node must not re-broadcast the same `INV` for an item it has already
 announced recently, to avoid redundant gossip storms — the exact
 de-duplication window/mechanism is an implementation detail of `#22`.
 
+### 5.1 Peer discovery
+
+Addresses spread through the network the same way blocks do, but under a
+stricter rule about what may be shared.
+
+**Only reachability-verified addresses are advertised.** A node may
+include an address in a `PEERS` message only if it has itself
+successfully completed an outbound connection to that exact `host:port`.
+Addresses learned from gossip but never dialed, and addresses of inbound
+peers, are never forwarded.
+
+This restriction exists because an inbound connection tells a node almost
+nothing about how to reach that peer. The source address is where the
+connection came *from*, and the accompanying `listen_port` is
+self-reported. For a peer behind NAT the resulting pair is not dialable
+by anyone — but without this rule it would still be gossiped network-wide,
+and every node receiving it would retry it indefinitely. A single laptop
+joining from a home connection is enough to make the whole network waste
+connection attempts forever.
+
+The consequence is asymmetric and intentional: a node behind NAT
+participates fully — it dials out, syncs, relays blocks — but its address
+is never advertised, so nobody attempts to dial it.
+
+`PEERS` is sent in two situations:
+
+1. To a newly connected peer, carrying this node's verified address set.
+2. To existing peers when a *new outbound* connection is established,
+   carrying just that one address. Inbound connections trigger no such
+   announcement, per the rule above.
+
+### 5.2 Receiving `PEERS`
+
+A node receiving `PEERS` records the addresses and does not act on them
+immediately. Each address is filtered before being stored; an address is
+rejected outright if it is:
+
+- port `0`, or an empty or non-IPv4-literal host
+- loopback (`127.0.0.0/8`) or this-network (`0.0.0.0/8`)
+- private per RFC1918 (`10/8`, `172.16/12`, `192.168/16`)
+- link-local (`169.254/16`)
+- multicast or reserved (`224.0.0.0` and above)
+
+Storage is capped, and duplicate entries are ignored. Both limits matter:
+`PEERS` payloads are attacker-controlled, so an unbounded address store
+is a memory-exhaustion vector, and unfiltered entries would let a
+malicious peer direct every node in the network to scan private address
+ranges inside its host's datacenter.
+
+Recording an address and dialing it are deliberately separate steps.
+Handling a `PEERS` message must not block: it is processed on the
+connection's message-reading path, and a blocking `connect()` there would
+stall block and transaction relay for that peer for the duration of a TCP
+timeout.
+
+### 5.3 Connection policy
+
+Dialing is driven independently of message handling. A node maintains a
+target number of outbound connections and, while below it, selects stored
+addresses that are not already connected and are due for an attempt.
+
+Failed attempts are retried with exponential backoff, capped, and
+abandoned after a bounded number of consecutive failures. Backoff is what
+makes an unreachable address — a peer that has gone down, or one behind
+NAT that was learned before this rule existed — cheap to keep in the
+store rather than a source of continuous connection attempts.
+
+A successful outbound connection marks that address verified, which is
+what makes it eligible for advertisement under §5.1. Addresses supplied
+at startup are stored the same way as gossiped ones, so a node that
+starts before its configured peers retries them rather than giving up.
+
 ## 6. Design notes and open decisions
 
 These are intentionally left for the implementation issues rather than
 fixed here, since they depend on details that only become clear while
 building `#20`–`#24`:
 
-- **Connection model**: one TCP connection per peer, bidirectional, or
-  separate inbound/outbound connections? This document assumes a single
-  bidirectional connection per peer pair.
-- **Peer identification**: peers are currently identified by
-  `IP:port` only; no persistent node identity (e.g. a public key) is
-  defined yet. Adding one would let a node's identity survive an IP
-  change, but is out of scope for the initial implementation.
-- **Timeouts and reconnection**: not specified here. `PING`/`PONG` exists
-  to support a liveness/timeout policy, but the actual timeout values
-  and reconnection backoff strategy belong in `#20`.
+- **Connection model**: a single bidirectional TCP connection per peer
+  pair. Simultaneous dials are resolved to one connection by §4.1.
+- **Peer identification**: peers are addressed by `host:listen_port` and
+  identified for the duration of a session by `node_id` (§3.1). The
+  `node_id` is regenerated on restart and is not authenticated — it
+  disambiguates connections, nothing more. It is not a persistent
+  identity and provides no defence against a peer claiming an arbitrary
+  value; a public-key identity would, and remains out of scope.
+- **Sybil resistance**: none. There is no peer scoring, no banning, no
+  rate limiting, and no diversity requirement across address ranges when
+  selecting peers to dial. A single actor controlling many addresses can
+  fill a node's address store and monopolise its outbound connections
+  (an eclipse attack). The filtering in §5.2 bounds memory use; it does
+  not bound influence.
+- **Address persistence**: the address store is in-memory only and is
+  lost on restart, so a node relies on its configured bootstrap peers
+  every time it starts.
+- **Timeouts and reconnection**: `PING`/`PONG` supports the liveness
+  policy; connection retry policy is described in §5.3.
 - **Maximum message size**: mentioned in §1 as a required check, exact
   value left to `#20`.
 

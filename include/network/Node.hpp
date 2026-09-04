@@ -63,10 +63,11 @@ public:
   transactions_for_block(size_t limit) const;
   [[nodiscard]] std::vector<core::Transaction> mempool_snapshot() const;
   void set_balance(const crypto::str &address, uint64_t amount);
+  void remember_peer(const crypto::str& host, uint16_t port);
   void set_logger(
       std::function<void(const crypto::str &, const crypto::str &)> logger);
 
-private:
+    private:
   void peer_loop(std::shared_ptr<Peer> peer_owner);
   void cleaner_loop();
   void ping_loop();
