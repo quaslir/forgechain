@@ -27,7 +27,6 @@ public:
   std::optional<PeerAddress> select_candidate();
   void mark_success(const PeerAddress &peer_address);
   void mark_failure(const PeerAddress &peer_address);
-  void defer(const PeerAddress& peer_address);
   [[nodiscard]] std::vector<PeerAddress>
   reachable(bool include_local = false) const;
   static bool is_routable(const PeerAddress &peer_address);

@@ -13,6 +13,7 @@
 #include "network/Inventory.hpp"
 #include "network/Message.hpp"
 #include "network/Peer.hpp"
+#include "network/PeerAddress.hpp"
 #include "network/TcpSocket.hpp"
 #include <atomic>
 #include <chrono>
@@ -94,7 +95,7 @@ private:
   std::optional<std::vector<crypto::HashBytes>>
   try_reorg(core::ForkChain &&fork_chain);
   void gossip_peers();
-
+  void send_peer_list(Peer *peer, const PeerAddress &peer_addr);
 
   uint16_t listen_port_;
   VersionInfo info_;
