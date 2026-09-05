@@ -13,6 +13,7 @@
 #include "network/Inventory.hpp"
 #include "network/Message.hpp"
 #include "network/Peer.hpp"
+#include "network/PeerAddress.hpp"
 #include "network/TcpSocket.hpp"
 #include <atomic>
 #include <chrono>
@@ -40,6 +41,7 @@ constexpr auto PING_TIMEOUT = std::chrono::seconds(45);
 
 constexpr auto CONNECT_INTERVAL = std::chrono::milliseconds(1000);
 constexpr size_t TARGET_OUTBOUND_PEERS = 8;
+constexpr auto GOSSIP_INTERVAL = std::chrono::seconds(30);
 class Node {
 public:
   Node(uint16_t listen_port, VersionInfo info, core::Blockchain &blockchain,
@@ -92,6 +94,9 @@ private:
   [[nodiscard]] size_t outbound_peer_count() const;
   std::optional<std::vector<crypto::HashBytes>>
   try_reorg(core::ForkChain &&fork_chain);
+  void gossip_peers();
+  void send_peer_list(Peer *peer, const PeerAddress &peer_addr);
+
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};
@@ -101,6 +106,7 @@ private:
   core::Ledger &ledger_;
   VectorPeers peers_;
   std::atomic<bool> running_{false};
+  std::atomic<bool> stopping_{false};
   std::thread accept_thread_;
   std::thread cleaner_thread_;
   std::thread ping_thread_;
