@@ -6,7 +6,9 @@
 #include <optional>
 namespace forgechain::network {
 class TcpSocket {
+
 public:
+        static constexpr int CONNECT_TIMEOUT_MS = 3000;
   explicit TcpSocket(int fd);
   ~TcpSocket();
 
