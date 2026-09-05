@@ -106,6 +106,7 @@ private:
   core::Ledger &ledger_;
   VectorPeers peers_;
   std::atomic<bool> running_{false};
+  std::atomic<bool> stopping_{false};
   std::thread accept_thread_;
   std::thread cleaner_thread_;
   std::thread ping_thread_;

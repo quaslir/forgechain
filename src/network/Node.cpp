@@ -43,6 +43,7 @@ bool Node::start() {
     return false;
   listener_.set_receive_timeout(1);
   running_.store(true);
+  stopping_.store(false);
   accept_thread_ = std::thread(&Node::accept_loop, this);
   cleaner_thread_ = std::thread(&Node::cleaner_loop, this);
   ping_thread_ = std::thread(&Node::ping_loop, this);
@@ -213,10 +214,11 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
   }
   PeerAddress candidate{.host = host, .port = incoming_info->listen_port};
   bool source_is_local = !AddressBook::is_routable(candidate);
-  std::vector<std::shared_ptr<Peer>> to_send;
   bool accepted{true};
   {
     std::lock_guard<std::mutex> peers_lock(peers_mutex_);
+    if (stopping_)
+      return false;
     for (size_t i = 0; i < peers_.size(); i++) {
       if (!peers_[i].peer->is_alive() ||
           peers_[i].peer->remote_version().listen_port == 0)
@@ -236,13 +238,6 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
     }
 
     if (accepted) {
-      if (is_outbound) {
-        for (const auto &my_peer : peers_) {
-          if (!my_peer.peer->is_alive())
-            continue;
-          to_send.push_back(my_peer.peer);
-        }
-      }
 
       peers_.push_back(
           PeerEntry{.peer = peer,
@@ -268,15 +263,6 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
   }
 
   send_peer_list(raw_peer, candidate);
-  if (is_outbound) {
-    crypto::bytes payload =
-        serialize_peer_list(std::vector<PeerAddress>{candidate});
-
-    for (const auto &peer_to_send : to_send) {
-      send_msg(peer_to_send.get(), MessageType::PEERS, payload);
-    }
-  }
-
   return true;
 }
 
@@ -665,6 +651,7 @@ void Node::stop() {
   {
 
     std::lock_guard<std::mutex> lock(peers_mutex_);
+    stopping_.store(true);
 
     for (auto &peer_entry : peers_) {
       peer_entry.peer->socket().close_socket();
