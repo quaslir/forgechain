@@ -18,6 +18,13 @@ public:
     bool succeeded{false};
     bool in_progress{false};
   };
+
+  struct AddressInfo {
+    PeerAddress address;
+    bool verified;
+    int failures;
+  };
+
   static constexpr size_t MAX_ENTRIES{1000};
   static constexpr int MAX_FAILURES{10};
   static constexpr auto BASE_BACKOFF = std::chrono::seconds(5);
@@ -29,6 +36,7 @@ public:
   void mark_failure(const PeerAddress &peer_address);
   [[nodiscard]] std::vector<PeerAddress>
   reachable(bool include_local = false) const;
+  [[nodiscard]] std::vector<AddressInfo> snapshot() const;
   static bool is_routable(const PeerAddress &peer_address);
   [[nodiscard]] size_t size() const;
 

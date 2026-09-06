@@ -74,7 +74,14 @@ bool Orchestrator::start() {
                           std::to_string(config_.rpc_port));
       rpc_server_.reset();
     }
+    else {
+        if(!config_.api_key.empty()) {
+            rpc_server_->set_api_key(std::move(config_.api_key));
+        }
+    }
   }
+
+
   for (const auto &address : config_.addresses) {
     node_.remember_peer(address.host, address.port);
   }
@@ -152,6 +159,8 @@ void Orchestrator::run_command_loop() {
       handle_peers_command();
     } else if (command == "status") {
       handle_status_command();
+    } else if (command == "addrbook") {
+      handle_addrbook_command();
     } else if (command == "set") {
       crypto::str subcommand{};
       iss >> subcommand;
@@ -218,7 +227,14 @@ void Orchestrator::handle_height_command() {
   std::cout << node_.chain_height() << std::endl;
 }
 void Orchestrator::handle_peers_command() {
-  std::cout << node_.peer_count() << std::endl;
+  auto peers = node_.peers();
+  if (peers.empty()) {
+    std::cout << "(no peers connected)" << std::endl;
+    return;
+  }
+  for (const auto &peer : peers) {
+    std::cout << peer << std::endl;
+  }
 }
 void Orchestrator::handle_status_command() {
   std::cout << "port: " << config_.listen_port << std::endl;
@@ -251,12 +267,16 @@ void Orchestrator::handle_set_reward_address(const crypto::str &address) {
 }
 void Orchestrator::handle_help_command() {
   std::cout << "commands:" << std::endl;
-  std::cout << "  balance <address>        show Ledger balance for address"
+  std::cout << "  balance <address>         show Ledger balance for address"
             << std::endl;
   std::cout << "  height                    show current chain height"
             << std::endl;
-  std::cout << "  peers                     show connected peer count"
+  std::cout << "  peers                     list connected peers (host:port, "
+               "direction)"
             << std::endl;
+  std::cout
+      << "  addrbook                  list known peer addresses and their state"
+      << std::endl;
   std::cout
       << "  mempool                   show pending transactions in mempool"
       << std::endl;
@@ -299,6 +319,19 @@ void Orchestrator::handle_set_secret_key_command(crypto::str &&key) {
     return;
   }
   rpc_server_->set_api_key(std::move(key));
+}
+
+void Orchestrator::handle_addrbook_command() {
+  auto addrbook = node_.book();
+
+  if (addrbook.empty()) {
+    std::cout << "(address book is empty)" << std::endl;
+    return;
+  }
+
+  for (const auto &info : addrbook) {
+    std::cout << info << std::endl;
+  }
 }
 
 void Orchestrator::stop() {

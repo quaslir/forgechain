@@ -289,11 +289,46 @@ bool Node::connect_to_peer(const crypto::str &host, uint16_t port) {
 
   return register_new_peer(std::move(socket), host, true);
 }
-
-[[nodiscard]] size_t Node::peer_count() const {
+size_t Node::peer_count() const {
   std::lock_guard<std::mutex> lock(peers_mutex_);
   return peers_.size();
 }
+std::vector<crypto::str> Node::peers() const {
+  std::lock_guard<std::mutex> lock(peers_mutex_);
+  if (peers_.empty())
+    return {};
+  std::vector<crypto::str> result;
+  for (const auto &peer : peers_) {
+    if (!peer.peer->is_alive())
+      continue;
+    result.emplace_back(
+        peer.peer->host() + ":" +
+        std::to_string(peer.peer->remote_version().listen_port) +
+        (peer.is_outbound ? " (out)" : " (in)"));
+  }
+
+  return result;
+}
+
+std::vector<crypto::str> Node::book() const {
+
+  auto book = address_book_.snapshot();
+  if (book.empty())
+    return {};
+
+  std::vector<crypto::str> result;
+  result.reserve(book.size());
+  for (const auto &entry : book) {
+    result.emplace_back(
+        entry.address.host + ":" + std::to_string(entry.address.port) +
+        (entry.verified
+             ? " verified"
+             : " unverified (" + std::to_string(entry.failures) + " fails)"));
+  }
+
+  return result;
+}
+
 bool Node::send_msg(Peer *peer, MessageType type,
                     const crypto::bytes &payload) {
   Message msg{.type = type, .payload = payload};
