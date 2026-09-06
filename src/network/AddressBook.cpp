@@ -93,6 +93,21 @@ std::vector<PeerAddress> AddressBook::reachable(bool include_local) const {
 
   return active;
 }
+
+std::vector<AddressBook::AddressInfo> AddressBook::snapshot() const {
+  std::lock_guard<std::mutex> book_lock(book_mutex_);
+  std::vector<AddressBook::AddressInfo> result;
+  result.reserve(book_.size());
+
+  for (const auto &entry : book_) {
+    result.push_back(AddressInfo{.address = entry.address,
+                                 .verified = entry.succeeded,
+                                 .failures = entry.failures});
+  }
+
+  return result;
+}
+
 size_t AddressBook::size() const {
   std::lock_guard<std::mutex> book_lock(book_mutex_);
   return book_.size();

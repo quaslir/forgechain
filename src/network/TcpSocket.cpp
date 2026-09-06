@@ -4,13 +4,13 @@
 #include <array>
 #include <cerrno>
 #include <cstdint>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <optional>
+#include <poll.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <poll.h>
 namespace forgechain::network {
 TcpSocket::TcpSocket(int fd) : fd_(fd) {}
 void TcpSocket::close_socket() {
@@ -57,11 +57,11 @@ TcpSocket listen_on(uint16_t port) {
   address.sin_port = htons(port);
   int res = bind(fd, reinterpret_cast<sockaddr *>(&address), sizeof(address));
   if (res < 0) {
-          close(fd);
+    close(fd);
     return TcpSocket{-1};
   }
   if (listen(fd, 5) < 0) {
-      close(fd);
+    close(fd);
     return TcpSocket{-1};
   }
 
@@ -79,49 +79,52 @@ TcpSocket accept_connection(const TcpSocket &listener) {
 TcpSocket connect_to(const crypto::str &host, uint16_t port) {
   sockaddr_in address{};
 
-  if(inet_pton(AF_INET, host.c_str(), &address.sin_addr) != 1) return TcpSocket{-1};
+  if (inet_pton(AF_INET, host.c_str(), &address.sin_addr) != 1)
+    return TcpSocket{-1};
   address.sin_port = htons(port);
   address.sin_family = AF_INET;
 
   int fd = socket(AF_INET, SOCK_STREAM, 0);
-  if(fd < 0) return TcpSocket{-1};
+  if (fd < 0)
+    return TcpSocket{-1};
 
   int flags = fcntl(fd, F_GETFL, 0);
-  if(flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
-      close(fd);
-      return TcpSocket{-1};
+  if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+    close(fd);
+    return TcpSocket{-1};
   }
 
-  int res = connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address));
+  int res =
+      connect(fd, reinterpret_cast<sockaddr *>(&address), sizeof(address));
 
-  if(res < 0) {
-      if(errno != EINPROGRESS) {
-          close(fd);
-          return TcpSocket{-1};
-      }
-
-      pollfd pfd{.fd = fd, .events = POLLOUT, .revents = 0};
-      int ready = 0;
-      do {
-          ready = poll(&pfd, 1, TcpSocket::CONNECT_TIMEOUT_MS);
-      } while(ready < 0 && errno == EINTR);
-
-      if(ready <= 0) {
-          close(fd);
-          return TcpSocket{-1};
-      }
-
-      int err = 0;
-      socklen_t len = sizeof(err);
-      if(getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0) {
-          close(fd);
-          return TcpSocket{-1};
-      }
-  }
-
-  if(fcntl(fd, F_SETFL, flags) < 0) {
+  if (res < 0) {
+    if (errno != EINPROGRESS) {
       close(fd);
       return TcpSocket{-1};
+    }
+
+    pollfd pfd{.fd = fd, .events = POLLOUT, .revents = 0};
+    int ready = 0;
+    do {
+      ready = poll(&pfd, 1, TcpSocket::CONNECT_TIMEOUT_MS);
+    } while (ready < 0 && errno == EINTR);
+
+    if (ready <= 0) {
+      close(fd);
+      return TcpSocket{-1};
+    }
+
+    int err = 0;
+    socklen_t len = sizeof(err);
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0) {
+      close(fd);
+      return TcpSocket{-1};
+    }
+  }
+
+  if (fcntl(fd, F_SETFL, flags) < 0) {
+    close(fd);
+    return TcpSocket{-1};
   }
 
   return TcpSocket{fd};

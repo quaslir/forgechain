@@ -152,6 +152,8 @@ void Orchestrator::run_command_loop() {
       handle_peers_command();
     } else if (command == "status") {
       handle_status_command();
+    } else if (command == "addrbook") {
+      handle_addrbook();
     } else if (command == "set") {
       crypto::str subcommand{};
       iss >> subcommand;
@@ -220,8 +222,8 @@ void Orchestrator::handle_height_command() {
 void Orchestrator::handle_peers_command() {
   auto peers = node_.peers();
 
-  for(const auto& peer : peers) {
-      std::cout << peer << std::endl;
+  for (const auto &peer : peers) {
+    std::cout << peer << std::endl;
   }
 }
 void Orchestrator::handle_status_command() {
@@ -303,6 +305,14 @@ void Orchestrator::handle_set_secret_key_command(crypto::str &&key) {
     return;
   }
   rpc_server_->set_api_key(std::move(key));
+}
+
+void Orchestrator::handle_addrbook() {
+  auto addrbook = node_.book();
+
+  for (const auto &info : addrbook) {
+    std::cout << info << std::endl;
+  }
 }
 
 void Orchestrator::stop() {

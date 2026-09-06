@@ -59,6 +59,7 @@ private:
   void handle_connect_to_peer(const crypto::str &host, uint16_t port);
   void handle_mempool_command();
   void handle_set_secret_key_command(crypto::str &&key);
+  void handle_addrbook();
   OrchestratorConfig config_;
   demo::DemoLog log_;
   std::optional<storage::Storage> storage_;

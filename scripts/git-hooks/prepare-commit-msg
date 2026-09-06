@@ -18,7 +18,7 @@ if [[ -z "${GROQ_API_KEY:-}" ]]; then
     exit 0
 fi
 
-log "--- NEW COMMIT (LLAMA 3.1 via GROQ) ---"
+log "--- NEW COMMIT (AUTO-DISCOVER MODEL via GROQ) ---"
 DIFF=$(git diff --cached --unified=3 -- . ':(exclude)*.lock' ':(exclude)package-lock.json')
 
 if [[ -z "$DIFF" ]]; then
@@ -33,12 +33,34 @@ fi
 
 RECENT_LOG=$(git log --oneline -5 2>/dev/null || echo "")
 
+log "Fetching alive models from Groq..."
+MODELS_JSON=$(curl -s -m 5 -H "Authorization: Bearer ${GROQ_API_KEY}" https://api.groq.com/openai/v1/models || echo "{}")
+
+MODEL=$(python3 - "$MODELS_JSON" 2>>"$LOG_FILE" <<'PY_EOF'
+import json, sys
+try:
+    data = json.loads(sys.argv[1])
+    models = [m['id'] for m in data.get('data', [])]
+    # Ищем любую живую Llama, исключая всякие guard/vision
+    llama_models = [m for m in models if 'llama' in m.lower() and 'guard' not in m.lower()]
+    if llama_models:
+        print(llama_models[-1]) # Берем последнюю добавленную
+    elif models:
+        print(models[0]) # Если нет ламы, берем вообще любую первую
+    else:
+        print("mixtral-8x7b-32768")
+except:
+    print("mixtral-8x7b-32768")
+PY_EOF
+)
+log "Dynamically selected model: $MODEL"
+
 SYSTEM_PROMPT="You are a senior C++ developer. Write a professional git commit message for this diff. Output ONLY the raw commit message text. NO markdown formatting. NO backticks. NO labels like 'What:' or 'Why:'. First line: Imperative summary under 50 chars. Blank line. Then bullet points explaining the core technical changes."
 
-REQUEST_BODY=$(python3 - "$SYSTEM_PROMPT" "$RECENT_LOG" "$DIFF" 2>>"$LOG_FILE" <<'PY_EOF'
+REQUEST_BODY=$(python3 - "$SYSTEM_PROMPT" "$RECENT_LOG" "$DIFF" "$MODEL" 2>>"$LOG_FILE" <<'PY_EOF'
 import json, sys
 body = {
-    "model": "llama-3.1-70b-versatile",
+    "model": sys.argv[4],
     "messages": [
         {"role": "system", "content": sys.argv[1]},
         {"role": "user", "content": f"Context (recent commits):\n{sys.argv[2]}\n\nDiff:\n{sys.argv[3]}"}
@@ -68,12 +90,23 @@ try:
         print(f"API Error: {data['error']}", file=sys.stderr)
         sys.exit(1)
 
-    text = data['choices'][0]['message']['content']
+    choice = data['choices'][0]['message']
+
+    # Если модель с reasoning-движком и content пустой - берем текст из reasoning
+    text = choice.get('content', '')
+    if not text:
+        text = choice.get('reasoning', '')
+
+    if not text:
+        print("Error: Both content and reasoning are empty", file=sys.stderr)
+        sys.exit(1)
+
     text = re.sub(r'^```[\w]*\n', '', text)
     text = re.sub(r'```$', '', text)
     print(text.strip())
 except Exception as e:
-    print(f"Parse Error: {e}, Raw: {raw}", file=sys.stderr)
+    print(f"Parse Error: {e}", file=sys.stderr)
+    sys.exit(1)
 PY_EOF
 )
 
