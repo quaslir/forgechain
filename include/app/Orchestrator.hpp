@@ -1,10 +1,7 @@
 #pragma once
 #include "app/DemoLog.hpp"
 #include "app/RpcServer.hpp"
-#include "core/Blockchain.hpp"
-#include "core/Ledger.hpp"
-#include "core/Mempool.hpp"
-#include "core/OrphanPool.hpp"
+#include "chain/ChainManager.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "network/Node.hpp"
 #include "network/PeerAddress.hpp"
@@ -64,10 +61,7 @@ private:
   OrchestratorConfig config_;
   demo::DemoLog log_;
   std::optional<storage::Storage> storage_;
-  core::Blockchain chain_;
-  core::Mempool mempool_;
-  core::OrphanPool orphan_pool_;
-  core::Ledger ledger_;
+  chain::ChainManager chain_manager_;
   network::Node node_;
   std::optional<RpcServer> rpc_server_;
   mutable std::mutex state_mutex_;

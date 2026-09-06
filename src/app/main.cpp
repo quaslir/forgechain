@@ -103,8 +103,7 @@ void parse_args(std::span<char *> argv,
       if (!api_key.empty()) {
         config.api_key = api_key;
       }
-    }
-    else if (((view == "--db-path") || view == "-d") && i + 1 < argv.size()) {
+    } else if (((view == "--db-path") || view == "-d") && i + 1 < argv.size()) {
       i++;
       std::string_view db_path_view{argv[i]};
       if (!db_path_view.empty()) {
