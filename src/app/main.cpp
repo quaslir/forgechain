@@ -96,7 +96,15 @@ void parse_args(std::span<char *> argv,
       if (!reward_address.empty()) {
         config.reward_address = reward_address;
       }
-    } else if (((view == "--db-path") || view == "-d") && i + 1 < argv.size()) {
+    } else if (((view == "--rpc-api-key") || view == "-K") &&
+               i + 1 < argv.size()) {
+      ++i;
+      std::string_view api_key{argv[i]};
+      if (!api_key.empty()) {
+        config.api_key = api_key;
+      }
+    }
+    else if (((view == "--db-path") || view == "-d") && i + 1 < argv.size()) {
       i++;
       std::string_view db_path_view{argv[i]};
       if (!db_path_view.empty()) {
