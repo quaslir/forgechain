@@ -1,3 +1,5 @@
+#include "support/TestChainAccess.hpp"
+
 #include "network/Node.hpp"
 #include "network/Handshake.hpp"
 #include "network/Message.hpp"
@@ -29,6 +31,7 @@ using namespace forgechain::network;
 using namespace forgechain::core;
 using namespace forgechain::consensus;
 using namespace forgechain::crypto;
+using forgechain::testsupport::TestNode;
 
 namespace {
 
@@ -100,19 +103,11 @@ TEST(Propagation, ValidBlockFromOnePeerReachesSecondPeer) {
     uint16_t port_a = next_test_port();
     uint16_t port_b = next_test_port();
 
-    Blockchain chain_a;
-    Mempool mempool_a(1000);
-    OrphanPool orphan_pool_a;
-    Ledger ledger_a;
-    Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
+    TestNode node_a(port_a, make_version(port_a));
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    Blockchain chain_b;
-    Mempool mempool_b(1000);
-    OrphanPool orphan_pool_b;
-    Ledger ledger_b;
-    Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
+    TestNode node_b(port_b, make_version(port_b));
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -124,13 +119,13 @@ TEST(Propagation, ValidBlockFromOnePeerReachesSecondPeer) {
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
     constexpr uint32_t kTestDifficulty = 8;
-    Block mined = mine_block(1, chain_a.latest().hash_, 1700000000, kTestDifficulty, {});
+    Block mined = mine_block(1, node_a.blocks().latest().hash_, 1700000000, kTestDifficulty, {});
     ASSERT_TRUE(source.send(MessageType::BLOCK, mined.serialize()));
 
-    ASSERT_TRUE(WaitUntil([&] { return chain_a.has_block(mined.hash_); }, std::chrono::seconds(2)))
+    ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().has_block(mined.hash_); }, std::chrono::seconds(2)))
         << "Node A never accepted the block into its own chain";
 
-    ASSERT_TRUE(WaitUntil([&] { return chain_b.has_block(mined.hash_); }, std::chrono::seconds(2)))
+    ASSERT_TRUE(WaitUntil([&] { return node_b.blocks().has_block(mined.hash_); }, std::chrono::seconds(2)))
         << "Node B never received the block relayed by Node A";
 }
 
@@ -138,19 +133,11 @@ TEST(Propagation, ValidTransactionFromOnePeerReachesSecondPeer) {
     uint16_t port_a = next_test_port();
     uint16_t port_b = next_test_port();
 
-    Blockchain chain_a;
-    Mempool mempool_a(1000);
-    OrphanPool orphan_pool_a;
-    Ledger ledger_a;
-    Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
+    TestNode node_a(port_a, make_version(port_a));
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    Blockchain chain_b;
-    Mempool mempool_b(1000);
-    OrphanPool orphan_pool_b;
-    Ledger ledger_b;
-    Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
+    TestNode node_b(port_b, make_version(port_b));
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -167,10 +154,10 @@ TEST(Propagation, ValidTransactionFromOnePeerReachesSecondPeer) {
 
     ASSERT_TRUE(source.send(MessageType::TX, tx.serialize()));
 
-    ASSERT_TRUE(WaitUntil([&] { return mempool_a.has_transaction(tx_hash); }, std::chrono::seconds(2)))
+    ASSERT_TRUE(WaitUntil([&] { return node_a.mempool().has_transaction(tx_hash); }, std::chrono::seconds(2)))
         << "Node A never accepted the transaction into its own mempool";
 
-    ASSERT_TRUE(WaitUntil([&] { return mempool_b.has_transaction(tx_hash); }, std::chrono::seconds(2)))
+    ASSERT_TRUE(WaitUntil([&] { return node_b.mempool().has_transaction(tx_hash); }, std::chrono::seconds(2)))
         << "Node B never received the transaction relayed by Node A";
 }
 
@@ -178,19 +165,11 @@ TEST(Propagation, ForgedTransactionIsNeitherStoredNorRelayed) {
     uint16_t port_a = next_test_port();
     uint16_t port_b = next_test_port();
 
-    Blockchain chain_a;
-    Mempool mempool_a(1000);
-    OrphanPool orphan_pool_a;
-    Ledger ledger_a;
-    Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
+    TestNode node_a(port_a, make_version(port_a));
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    Blockchain chain_b;
-    Mempool mempool_b(1000);
-    OrphanPool orphan_pool_b;
-    Ledger ledger_b;
-    Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
+    TestNode node_b(port_b, make_version(port_b));
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -211,27 +190,19 @@ TEST(Propagation, ForgedTransactionIsNeitherStoredNorRelayed) {
     ASSERT_TRUE(source.send(MessageType::TX, forged.serialize()));
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    EXPECT_FALSE(mempool_a.has_transaction(forged_hash));
-    EXPECT_FALSE(mempool_b.has_transaction(forged_hash));
+    EXPECT_FALSE(node_a.mempool().has_transaction(forged_hash));
+    EXPECT_FALSE(node_b.mempool().has_transaction(forged_hash));
 }
 
 TEST(Propagation, BlockWithWrongPrevHashIsNeitherStoredNorRelayed) {
     uint16_t port_a = next_test_port();
     uint16_t port_b = next_test_port();
 
-    Blockchain chain_a;
-    Mempool mempool_a(1000);
-    OrphanPool orphan_pool_a;
-    Ledger ledger_a;
-    Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
+    TestNode node_a(port_a, make_version(port_a));
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    Blockchain chain_b;
-    Mempool mempool_b(1000);
-    OrphanPool orphan_pool_b;
-    Ledger ledger_b;
-    Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
+    TestNode node_b(port_b, make_version(port_b));
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -247,15 +218,15 @@ TEST(Propagation, BlockWithWrongPrevHashIsNeitherStoredNorRelayed) {
     wrong_parent[0] = 0xAB;
     wrong_parent[1] = 0xCD;
     Block orphan = mine_block(1, wrong_parent, 1700000000, kTestDifficulty, {});
-    ASSERT_NE(orphan.prev_hash_, chain_a.latest().hash_);
+    ASSERT_NE(orphan.prev_hash_, node_a.blocks().latest().hash_);
 
-    size_t height_before = chain_a.size();
+    size_t height_before = node_a.blocks().size();
     ASSERT_TRUE(source.send(MessageType::BLOCK, orphan.serialize()));
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    EXPECT_EQ(chain_a.size(), height_before)
+    EXPECT_EQ(node_a.blocks().size(), height_before)
         << "Node A accepted a block with a prev_hash_ that doesn't match its chain tip";
-    EXPECT_FALSE(chain_b.has_block(orphan.hash_))
+    EXPECT_FALSE(node_b.blocks().has_block(orphan.hash_))
         << "Node B received a block that A should never have relayed";
 }
 
@@ -263,19 +234,11 @@ TEST(Propagation, BlockWithTamperedHashIsNeitherStoredNorRelayed) {
     uint16_t port_a = next_test_port();
     uint16_t port_b = next_test_port();
 
-    Blockchain chain_a;
-    Mempool mempool_a(1000);
-    OrphanPool orphan_pool_a;
-    Ledger ledger_a;
-    Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
+    TestNode node_a(port_a, make_version(port_a));
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    Blockchain chain_b;
-    Mempool mempool_b(1000);
-    OrphanPool orphan_pool_b;
-    Ledger ledger_b;
-    Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
+    TestNode node_b(port_b, make_version(port_b));
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -287,20 +250,20 @@ TEST(Propagation, BlockWithTamperedHashIsNeitherStoredNorRelayed) {
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
     constexpr uint32_t kTestDifficulty = 8;
-    Block mined = mine_block(1, chain_a.latest().hash_, 1700000000, kTestDifficulty, {});
+    Block mined = mine_block(1, node_a.blocks().latest().hash_, 1700000000, kTestDifficulty, {});
 
     Block tampered = mined;
     tampered.timestamp_ = mined.timestamp_ + 12345;
     ASSERT_NE(tampered.compute_hash(), tampered.hash_)
         << "test setup invariant broken: tampering did not change compute_hash()";
 
-    size_t height_before = chain_a.size();
+    size_t height_before = node_a.blocks().size();
     ASSERT_TRUE(source.send(MessageType::BLOCK, tampered.serialize()));
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    EXPECT_EQ(chain_a.size(), height_before)
+    EXPECT_EQ(node_a.blocks().size(), height_before)
         << "Node A accepted a block whose hash_ doesn't match compute_hash()";
-    EXPECT_FALSE(chain_b.has_block(tampered.hash_))
+    EXPECT_FALSE(node_b.blocks().has_block(tampered.hash_))
         << "Node B received a block that A should never have relayed";
 }
 
@@ -308,19 +271,11 @@ TEST(Propagation, HeavierForkTriggersReorgAndPropagatesToPeer) {
     uint16_t port_a = next_test_port();
     uint16_t port_b = next_test_port();
 
-    Blockchain chain_a;
-    Mempool mempool_a(1000);
-    OrphanPool orphan_pool_a;
-    Ledger ledger_a;
-    Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
+    TestNode node_a(port_a, make_version(port_a));
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    Blockchain chain_b;
-    Mempool mempool_b(1000);
-    OrphanPool orphan_pool_b;
-    Ledger ledger_b;
-    Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
+    TestNode node_b(port_b, make_version(port_b));
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -331,14 +286,14 @@ TEST(Propagation, HeavierForkTriggersReorgAndPropagatesToPeer) {
     ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
-    HashBytes genesisHash = chain_a.latest().hash_;
+    HashBytes genesisHash = node_a.blocks().latest().hash_;
 
     constexpr uint32_t kWeakDifficulty = 6;
     Block weakBlock = mine_block(1, genesisHash, 1700000000, kWeakDifficulty, {});
     ASSERT_TRUE(source.send(MessageType::BLOCK, weakBlock.serialize()));
-    ASSERT_TRUE(WaitUntil([&] { return chain_a.has_block(weakBlock.hash_); }, std::chrono::seconds(2)))
+    ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().has_block(weakBlock.hash_); }, std::chrono::seconds(2)))
         << "Node A never accepted the initial weak block";
-    ASSERT_TRUE(WaitUntil([&] { return chain_b.has_block(weakBlock.hash_); }, std::chrono::seconds(2)))
+    ASSERT_TRUE(WaitUntil([&] { return node_b.blocks().has_block(weakBlock.hash_); }, std::chrono::seconds(2)))
         << "Node B never received the initial weak block";
 
     constexpr uint32_t kHeavyDifficulty = 12;
@@ -346,12 +301,12 @@ TEST(Propagation, HeavierForkTriggersReorgAndPropagatesToPeer) {
     ASSERT_NE(heavyBlock.hash_, weakBlock.hash_);
     ASSERT_TRUE(source.send(MessageType::BLOCK, heavyBlock.serialize()));
 
-    ASSERT_TRUE(WaitUntil([&] { return chain_a.latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
+    ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
         << "Node A never reorganized onto the heavier fork";
-    EXPECT_FALSE(chain_a.has_block(weakBlock.hash_))
+    EXPECT_FALSE(node_a.blocks().has_block(weakBlock.hash_))
         << "Node A's weak block should have been discarded by the reorg";
 
-    ASSERT_TRUE(WaitUntil([&] { return chain_b.latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
+    ASSERT_TRUE(WaitUntil([&] { return node_b.blocks().latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
         << "Node B never received the heavier block via post-reorg broadcast";
 }
 
@@ -359,19 +314,11 @@ TEST(Propagation, ReorgReturnsDiscardedTransactionToMempool) {
     uint16_t port_a = next_test_port();
     uint16_t port_b = next_test_port();
 
-    Blockchain chain_a;
-    Mempool mempool_a(1000);
-    OrphanPool orphan_pool_a;
-    Ledger ledger_a;
-    Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
+    TestNode node_a(port_a, make_version(port_a));
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    Blockchain chain_b;
-    Mempool mempool_b(1000);
-    OrphanPool orphan_pool_b;
-    Ledger ledger_b;
-    Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
+    TestNode node_b(port_b, make_version(port_b));
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -382,11 +329,11 @@ TEST(Propagation, ReorgReturnsDiscardedTransactionToMempool) {
     ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
-    HashBytes genesisHash = chain_a.latest().hash_;
+    HashBytes genesisHash = node_a.blocks().latest().hash_;
 
     Wallet alice = make_wallet();
 
-    ledger_a.set_balance(alice.address, 1000);
+    node_a.ledger().set_balance(alice.address, 1000);
 
     Transaction orphanedTx = make_signed_tx(alice, "bob-address", 100);
     auto orphanedTxHash = orphanedTx.compute_hash();
@@ -394,16 +341,16 @@ TEST(Propagation, ReorgReturnsDiscardedTransactionToMempool) {
     constexpr uint32_t kWeakDifficulty = 6;
     Block weakBlock = mine_block(1, genesisHash, 1700000000, kWeakDifficulty, {orphanedTx});
     ASSERT_TRUE(source.send(MessageType::BLOCK, weakBlock.serialize()));
-    ASSERT_TRUE(WaitUntil([&] { return chain_a.has_block(weakBlock.hash_); }, std::chrono::seconds(2)));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().has_block(weakBlock.hash_); }, std::chrono::seconds(2)));
 
     constexpr uint32_t kHeavyDifficulty = 12;
     Block heavyBlock = mine_block(1, genesisHash, 1700000001, kHeavyDifficulty, {});
     ASSERT_TRUE(source.send(MessageType::BLOCK, heavyBlock.serialize()));
 
-    ASSERT_TRUE(WaitUntil([&] { return chain_a.latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
+    ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
         << "Node A never reorganized onto the heavier fork";
 
-    ASSERT_TRUE(WaitUntil([&] { return mempool_a.has_transaction(orphanedTxHash); }, std::chrono::seconds(2)))
+    ASSERT_TRUE(WaitUntil([&] { return node_a.mempool().has_transaction(orphanedTxHash); }, std::chrono::seconds(2)))
         << "Discarded transaction was never returned to Node A's mempool after reorg";
 }
 
@@ -411,19 +358,11 @@ TEST(Propagation, LedgerBalanceUpdatesOnBothNodesAfterBlockWithRealTransaction) 
     uint16_t port_a = next_test_port();
     uint16_t port_b = next_test_port();
 
-    Blockchain chain_a;
-    Mempool mempool_a(1000);
-    OrphanPool orphan_pool_a;
-    Ledger ledger_a;
-    Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
+    TestNode node_a(port_a, make_version(port_a));
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    Blockchain chain_b;
-    Mempool mempool_b(1000);
-    OrphanPool orphan_pool_b;
-    Ledger ledger_b;
-    Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
+    TestNode node_b(port_b, make_version(port_b));
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -436,31 +375,31 @@ TEST(Propagation, LedgerBalanceUpdatesOnBothNodesAfterBlockWithRealTransaction) 
 
     Wallet alice = make_wallet();
 
-    ledger_a.set_balance(alice.address, 1000);
-    ledger_b.set_balance(alice.address, 1000);
+    node_a.ledger().set_balance(alice.address, 1000);
+    node_b.ledger().set_balance(alice.address, 1000);
 
     Transaction tx = make_signed_tx(alice, "bob-address", 250);
 
-    Block block = mine_block(1, chain_a.latest().hash_, 1700000000, 8, {tx});
+    Block block = mine_block(1, node_a.blocks().latest().hash_, 1700000000, 8, {tx});
     ASSERT_TRUE(source.send(MessageType::BLOCK, block.serialize()));
 
-    ASSERT_TRUE(WaitUntil([&] { return chain_a.has_block(block.hash_); }, std::chrono::seconds(2)))
+    ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().has_block(block.hash_); }, std::chrono::seconds(2)))
         << "Node A never accepted the block";
-    ASSERT_TRUE(WaitUntil([&] { return chain_b.has_block(block.hash_); }, std::chrono::seconds(2)))
+    ASSERT_TRUE(WaitUntil([&] { return node_b.blocks().has_block(block.hash_); }, std::chrono::seconds(2)))
         << "Node B never received the block";
 
     ASSERT_TRUE(WaitUntil([&] {
-        auto balance = ledger_a.get_balance(alice.address);
+        auto balance = node_a.ledger().get_balance(alice.address);
         return balance.has_value() && *balance == 750u;
     }, std::chrono::seconds(2))) << "Node A's ledger was never updated by the transaction";
 
     ASSERT_TRUE(WaitUntil([&] {
-        auto balance = ledger_b.get_balance(alice.address);
+        auto balance = node_b.ledger().get_balance(alice.address);
         return balance.has_value() && *balance == 750u;
     }, std::chrono::seconds(2))) << "Node B's ledger was never updated by the transaction";
 
-    auto aliceBalanceB = ledger_b.get_balance(alice.address);
-    auto bobBalanceB = ledger_b.get_balance("bob-address");
+    auto aliceBalanceB = node_b.ledger().get_balance(alice.address);
+    auto bobBalanceB = node_b.ledger().get_balance("bob-address");
     ASSERT_TRUE(aliceBalanceB.has_value());
     ASSERT_TRUE(bobBalanceB.has_value());
     EXPECT_EQ(*aliceBalanceB, 750u);
@@ -471,19 +410,11 @@ TEST(Propagation, BlockWithUnaffordableTransactionIsRejectedNotJustSkipped) {
     uint16_t port_a = next_test_port();
     uint16_t port_b = next_test_port();
 
-    Blockchain chain_a;
-    Mempool mempool_a(1000);
-    OrphanPool orphan_pool_a;
-    Ledger ledger_a;
-    Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
+    TestNode node_a(port_a, make_version(port_a));
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    Blockchain chain_b;
-    Mempool mempool_b(1000);
-    OrphanPool orphan_pool_b;
-    Ledger ledger_b;
-    Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
+    TestNode node_b(port_b, make_version(port_b));
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -497,16 +428,16 @@ TEST(Propagation, BlockWithUnaffordableTransactionIsRejectedNotJustSkipped) {
     Wallet alice = make_wallet();
     Transaction tx = make_signed_tx(alice, "bob-address", 250);
 
-    size_t heightBefore = chain_a.size();
-    Block block = mine_block(1, chain_a.latest().hash_, 1700000000, 8, {tx});
+    size_t heightBefore = node_a.blocks().size();
+    Block block = mine_block(1, node_a.blocks().latest().hash_, 1700000000, 8, {tx});
     ASSERT_TRUE(source.send(MessageType::BLOCK, block.serialize()));
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    EXPECT_EQ(chain_a.size(), heightBefore)
+    EXPECT_EQ(node_a.blocks().size(), heightBefore)
         << "Node A accepted a block whose transaction its own Ledger couldn't apply";
-    EXPECT_FALSE(chain_b.has_block(block.hash_))
+    EXPECT_FALSE(node_b.blocks().has_block(block.hash_))
         << "Node B received a block that A should never have relayed";
-    EXPECT_FALSE(ledger_a.get_balance(alice.address).has_value())
+    EXPECT_FALSE(node_a.ledger().get_balance(alice.address).has_value())
         << "Ledger should be untouched -- no balance record should exist for alice";
 }
 
@@ -514,19 +445,11 @@ TEST(Propagation, LedgerReflectsWinningBranchNotLosingBranchAfterReorg) {
     uint16_t port_a = next_test_port();
     uint16_t port_b = next_test_port();
 
-    Blockchain chain_a;
-    Mempool mempool_a(1000);
-    OrphanPool orphan_pool_a;
-    Ledger ledger_a;
-    Node node_a(port_a, make_version(port_a), chain_a, mempool_a, orphan_pool_a, ledger_a);
+    TestNode node_a(port_a, make_version(port_a));
     ASSERT_TRUE(node_a.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    Blockchain chain_b;
-    Mempool mempool_b(1000);
-    OrphanPool orphan_pool_b;
-    Ledger ledger_b;
-    Node node_b(port_b, make_version(port_b), chain_b, mempool_b, orphan_pool_b, ledger_b);
+    TestNode node_b(port_b, make_version(port_b));
     ASSERT_TRUE(node_b.start());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -537,19 +460,19 @@ TEST(Propagation, LedgerReflectsWinningBranchNotLosingBranchAfterReorg) {
     ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
-    HashBytes genesisHash = chain_a.latest().hash_;
+    HashBytes genesisHash = node_a.blocks().latest().hash_;
 
     Wallet alice = make_wallet();
-    ledger_a.set_balance(alice.address, 1000);
-    ledger_b.set_balance(alice.address, 1000);
+    node_a.ledger().set_balance(alice.address, 1000);
+    node_b.ledger().set_balance(alice.address, 1000);
 
     Transaction txToBob = make_signed_tx(alice, "bob-address", 300);
     constexpr uint32_t kWeakDifficulty = 6;
     Block weakBlock = mine_block(1, genesisHash, 1700000000, kWeakDifficulty, {txToBob});
     ASSERT_TRUE(source.send(MessageType::BLOCK, weakBlock.serialize()));
-    ASSERT_TRUE(WaitUntil([&] { return chain_a.has_block(weakBlock.hash_); }, std::chrono::seconds(2)));
+    ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().has_block(weakBlock.hash_); }, std::chrono::seconds(2)));
     ASSERT_TRUE(WaitUntil([&] {
-        auto b = ledger_a.get_balance(alice.address);
+        auto b = node_a.ledger().get_balance(alice.address);
         return b.has_value() && *b == 700u;
     }, std::chrono::seconds(2))) << "Node A's ledger did not reflect the losing branch's tx before reorg";
 
@@ -559,7 +482,7 @@ TEST(Propagation, LedgerReflectsWinningBranchNotLosingBranchAfterReorg) {
     ASSERT_NE(heavyBlock.hash_, weakBlock.hash_);
     ASSERT_TRUE(source.send(MessageType::BLOCK, heavyBlock.serialize()));
 
-    ASSERT_TRUE(WaitUntil([&] { return chain_a.latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
+    ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
         << "Node A never reorganized onto the heavier fork";
 
     Ledger groundTruth;
@@ -567,13 +490,13 @@ TEST(Propagation, LedgerReflectsWinningBranchNotLosingBranchAfterReorg) {
     ASSERT_TRUE(groundTruth.apply_transaction(txToCarol));
 
     ASSERT_TRUE(WaitUntil([&] {
-        auto b = ledger_a.get_balance(alice.address);
+        auto b = node_a.ledger().get_balance(alice.address);
         return b.has_value() && *b == *groundTruth.get_balance(alice.address);
     }, std::chrono::seconds(2))) << "Node A's ledger alice balance does not match winning-branch-only ground truth";
 
-    auto aliceBalance = ledger_a.get_balance(alice.address);
-    auto bobBalance = ledger_a.get_balance("bob-address");
-    auto carolBalance = ledger_a.get_balance("carol-address");
+    auto aliceBalance = node_a.ledger().get_balance(alice.address);
+    auto bobBalance = node_a.ledger().get_balance("bob-address");
+    auto carolBalance = node_a.ledger().get_balance("carol-address");
 
     ASSERT_TRUE(aliceBalance.has_value());
     EXPECT_EQ(*aliceBalance, *groundTruth.get_balance(alice.address));

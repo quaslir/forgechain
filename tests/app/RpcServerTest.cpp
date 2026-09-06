@@ -1,3 +1,5 @@
+#include "support/TestChainAccess.hpp"
+
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
 #include "core/Ledger.hpp"
@@ -18,6 +20,7 @@
 #include <optional>
 #include <string>
 
+
 #define private public
 #include "app/RpcServer.hpp"
 #undef private
@@ -26,20 +29,10 @@ using namespace forgechain::app;
 using namespace forgechain::core;
 using namespace forgechain::crypto;
 using namespace forgechain::network;
+using forgechain::testsupport::TestNode;
 
 namespace {
 
-struct TestNode : Node {
-  Blockchain chain;
-  Mempool mempool;
-  OrphanPool orphan_pool;
-  Ledger ledger;
-
-  TestNode()
-      : Node(0,
-             VersionInfo{.protocol_version = 1, .chain_height = 0, .timestamp = 0, .listen_port = 0, .node_id = 0},
-             chain, mempool, orphan_pool, ledger), mempool(1000) {}
-};
 
 struct TestWallet {
   KeyPair keys;
@@ -58,13 +51,15 @@ Transaction make_signed_test_tx(const TestWallet &sender, const str &recipient,
   return tx;
 }
 
-RpcServer make_server(TestNode &node) { return RpcServer(node, 0); }
+RpcServer make_server(TestNode &node) {
+  return RpcServer(node,0, node.chain_manager());
+}
 
 } // namespace
 
 TEST(RpcServer, GetBalanceReturnsAmountForKnownAddress) {
   TestNode node;
-  node.ledger.set_balance("alice-address", 500);
+  node.ledger().set_balance("alice-address", 500);
   RpcServer server = make_server(node);
 
   EXPECT_EQ(server.handle_command("GETBALANCE alice-address"), "500");
@@ -86,7 +81,7 @@ TEST(RpcServer, GetBalanceWithNoAddressReturnsError) {
 
 TEST(RpcServer, GetBalanceOfZeroIsDistinctFromUnknown) {
   TestNode node;
-  node.ledger.set_balance("alice-address", 0);
+  node.ledger().set_balance("alice-address", 0);
   RpcServer server = make_server(node);
 
   EXPECT_EQ(server.handle_command("GETBALANCE alice-address"), "0");
@@ -152,21 +147,21 @@ TEST(RpcServer, SubmitTxWithValidHexButGarbagePayloadReturnsError) {
 TEST(RpcServer, SubmitTxWithValidSignedTransactionSucceeds) {
   TestNode node;
   TestWallet alice = make_test_wallet();
-  node.ledger.set_balance(alice.address, 1000);
+  node.ledger().set_balance(alice.address, 1000);
 
   Transaction tx = make_signed_test_tx(alice, "bob-address", 100);
   str hex = to_hex(tx.serialize());
   RpcServer server = make_server(node);
 
   EXPECT_EQ(server.handle_command("SUBMITTX " + hex), "OK");
-  EXPECT_TRUE(node.mempool.has_transaction(tx.compute_hash()));
+  EXPECT_TRUE(node.mempool().has_transaction(tx.compute_hash()));
 }
 
 TEST(RpcServer, SubmitTxWithInvalidSignatureIsAcceptedByRpcButRejectedByMempool) {
   TestNode node;
   TestWallet alice = make_test_wallet();
   TestWallet mallory = make_test_wallet();
-  node.ledger.set_balance(alice.address, 1000);
+  node.ledger().set_balance(alice.address, 1000);
 
   Transaction tx(alice.address, "bob-address", 100, alice.keys.public_key, 0);
   tx.signature_ = sign(tx.serialize_for_signing(), mallory.keys.private_key);
@@ -174,7 +169,7 @@ TEST(RpcServer, SubmitTxWithInvalidSignatureIsAcceptedByRpcButRejectedByMempool)
   RpcServer server = make_server(node);
 
   EXPECT_EQ(server.handle_command("SUBMITTX " + hex), "OK");
-  EXPECT_FALSE(node.mempool.has_transaction(tx.compute_hash()))
+  EXPECT_FALSE(node.mempool().has_transaction(tx.compute_hash()))
       << "RPC reports OK because submit_transaction() has no return value -- "
          "the tx itself is still correctly rejected by Mempool underneath, "
          "this test documents that OK only means \"accepted for processing\", "
@@ -191,7 +186,7 @@ TEST(RpcServer, CommandsAreCaseSensitive) {
 
 TEST(RpcServer, GetBalanceIgnoresExtraTrailingArguments) {
   TestNode node;
-  node.ledger.set_balance("alice-address", 42);
+  node.ledger().set_balance("alice-address", 42);
   RpcServer server = make_server(node);
 
   EXPECT_EQ(server.handle_command("GETBALANCE alice-address extra garbage"),
@@ -259,7 +254,7 @@ TEST(RpcServer, TokenCanBeChangedAtRuntime) {
 
 TEST(RpcServer, TokenWithGetBalanceCommandParsesRemainingArgumentsCorrectly) {
   TestNode node;
-  node.ledger.set_balance("alice-address", 500);
+  node.ledger().set_balance("alice-address", 500);
   RpcServer server = make_server(node);
   server.set_api_key(str("secret123"));
 
