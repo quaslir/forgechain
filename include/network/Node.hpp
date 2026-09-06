@@ -54,7 +54,9 @@ public:
   void accept_loop();
   bool connect_to_peer(const crypto::str &host, uint16_t port);
 
+  [[nodiscard]] std::vector<crypto::str> peers() const;
   [[nodiscard]] size_t peer_count() const;
+  [[nodiscard]] std::vector<crypto::str> book() const;
   void submit_block(const core::Block &block);
   void submit_transaction(const core::Transaction &tx);
   [[nodiscard]] size_t chain_height() const;

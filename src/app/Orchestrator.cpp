@@ -218,7 +218,11 @@ void Orchestrator::handle_height_command() {
   std::cout << node_.chain_height() << std::endl;
 }
 void Orchestrator::handle_peers_command() {
-  std::cout << node_.peer_count() << std::endl;
+  auto peers = node_.peers();
+
+  for(const auto& peer : peers) {
+      std::cout << peer << std::endl;
+  }
 }
 void Orchestrator::handle_status_command() {
   std::cout << "port: " << config_.listen_port << std::endl;
