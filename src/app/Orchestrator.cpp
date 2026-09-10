@@ -203,6 +203,8 @@ void Orchestrator::run_command_loop() {
       handle_connect_to_peer(host, static_cast<uint16_t>(*port_number));
     } else if (command == "mempool") {
       handle_mempool_command();
+    } else if (command == "ledger") {
+      handle_ledger_command();
     } else if (command == "help") {
       handle_help_command();
     } else if (command == "quit" || command == "exit") {
@@ -330,6 +332,20 @@ void Orchestrator::handle_addrbook_command() {
 
   for (const auto &info : addrbook) {
     std::cout << info << std::endl;
+  }
+}
+
+void Orchestrator::handle_ledger_command() {
+  auto balances = chain_manager_.all_balances();
+
+  if (balances.empty()) {
+    std::cout << "(ledger is empty)" << std::endl;
+    return;
+  }
+
+  std::cout << balances.size() << " account(s):" << std::endl;
+  for (const auto &[address, amount] : balances) {
+    std::cout << "  " << address << " : " << amount << std::endl;
   }
 }
 
