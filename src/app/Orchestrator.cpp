@@ -24,14 +24,14 @@ namespace forgechain::app {
 
 Orchestrator::Orchestrator(OrchestratorConfig config)
     : config_(std::move(config)), log_(config_.node_name),
-      mempool_(config_.kMaxPending),
+      chain_manager_(config_.kMaxPending),
       node_(config_.listen_port,
             network::VersionInfo{.protocol_version = 1,
                                  .chain_height = 0,
                                  .timestamp = 0,
                                  .listen_port = config_.listen_port,
                                  .node_id = network::generate_node_id()},
-            chain_, mempool_, orphan_pool_, ledger_) {
+            chain_manager_) {
   if (!config_.db_path.empty()) {
     storage_.emplace(config_.db_path);
   }
@@ -45,12 +45,12 @@ Orchestrator::Orchestrator(OrchestratorConfig config)
               "storage corrupted: missing block at height " +
               std::to_string(i));
         }
-        chain_.add_block(std::move(*block));
+        chain_manager_.restore_block(std::move(*block));
       }
     }
     auto balances = storage_->load_all_balances();
     for (const auto &[address, amount] : balances) {
-      ledger_.set_balance(address, amount);
+      chain_manager_.set_balance(address, amount);
     }
   }
 
@@ -68,19 +68,17 @@ bool Orchestrator::start() {
     mining_thread_ = std::thread(&Orchestrator::mining_loop, this);
   }
   if (config_.rpc_port > 0) {
-    rpc_server_.emplace(node_, config_.rpc_port);
+    rpc_server_.emplace(node_, config_.rpc_port, chain_manager_);
     if (!rpc_server_->start()) {
       log_.log("RPC", "FAILED to start RPC server on port " +
                           std::to_string(config_.rpc_port));
       rpc_server_.reset();
-    }
-    else {
-        if(!config_.api_key.empty()) {
-            rpc_server_->set_api_key(std::move(config_.api_key));
-        }
+    } else {
+      if (!config_.api_key.empty()) {
+        rpc_server_->set_api_key(std::move(config_.api_key));
+      }
     }
   }
-
 
   for (const auto &address : config_.addresses) {
     node_.remember_peer(address.host, address.port);
@@ -102,9 +100,10 @@ void Orchestrator::mining_loop() {
       break;
 
     std::lock_guard<std::mutex> state_lock(state_mutex_);
-    size_t prev_height = node_.chain_height();
-    crypto::HashBytes prev_hash = node_.latest_hash();
-    auto txs_for_block = node_.transactions_for_block(config_.kMaxTxsPerBlock);
+    size_t prev_height = chain_manager_.chain_height();
+    crypto::HashBytes prev_hash = chain_manager_.latest_hash();
+    auto txs_for_block =
+        chain_manager_.transactions_for_block(config_.kMaxTxsPerBlock);
 
     if (!config_.reward_address.empty()) {
       uint64_t fees_total = 0;
@@ -122,12 +121,12 @@ void Orchestrator::mining_loop() {
         config_.mine_difficulty, txs_for_block);
     node_.submit_block(mined);
 
-    if (node_.chain_height() == prev_height) {
+    if (chain_manager_.chain_height() == prev_height) {
       log_.log("MINE", "block REJECTED (height unchanged at " +
                            std::to_string(prev_height) + ")");
     } else {
       log_.log("MINE", "block ACCEPTED, height now " +
-                           std::to_string(node_.chain_height()));
+                           std::to_string(chain_manager_.chain_height()));
     }
   }
 }
@@ -204,6 +203,8 @@ void Orchestrator::run_command_loop() {
       handle_connect_to_peer(host, static_cast<uint16_t>(*port_number));
     } else if (command == "mempool") {
       handle_mempool_command();
+    } else if (command == "ledger") {
+      handle_ledger_command();
     } else if (command == "help") {
       handle_help_command();
     } else if (command == "quit" || command == "exit") {
@@ -215,7 +216,7 @@ void Orchestrator::run_command_loop() {
 }
 
 void Orchestrator::handle_balance_command(const crypto::str &address) {
-  auto balance = node_.get_balance(address);
+  auto balance = chain_manager_.get_balance(address);
   if (!balance.has_value()) {
     std::cout << "unknown address" << std::endl;
     return;
@@ -224,7 +225,7 @@ void Orchestrator::handle_balance_command(const crypto::str &address) {
   std::cout << *balance << std::endl;
 }
 void Orchestrator::handle_height_command() {
-  std::cout << node_.chain_height() << std::endl;
+  std::cout << chain_manager_.chain_height() << std::endl;
 }
 void Orchestrator::handle_peers_command() {
   auto peers = node_.peers();
@@ -300,7 +301,7 @@ void Orchestrator::handle_connect_to_peer(const crypto::str &host,
   }
 }
 void Orchestrator::handle_mempool_command() {
-  auto txs = node_.mempool_snapshot();
+  auto txs = chain_manager_.mempool_snapshot();
   if (txs.empty()) {
     std::cout << "(mempool is empty)" << std::endl;
     return;
@@ -334,6 +335,20 @@ void Orchestrator::handle_addrbook_command() {
   }
 }
 
+void Orchestrator::handle_ledger_command() {
+  auto balances = chain_manager_.all_balances();
+
+  if (balances.empty()) {
+    std::cout << "(ledger is empty)" << std::endl;
+    return;
+  }
+
+  std::cout << balances.size() << " account(s):" << std::endl;
+  for (const auto &[address, amount] : balances) {
+    std::cout << "  " << address << " : " << amount << std::endl;
+  }
+}
+
 void Orchestrator::stop() {
   running_.store(false);
   if (mining_thread_.joinable()) {
@@ -345,11 +360,10 @@ void Orchestrator::stop() {
   node_.stop();
 
   if (storage_.has_value()) {
-    for (size_t i = 0; i < chain_.size(); i++) {
-      const auto &block = chain_.at(i);
-      storage_->save_block(block, i);
+    for (size_t i = 0; i < chain_manager_.chain_height(); i++) {
+      storage_->save_block(chain_manager_.block_at(i), i);
     }
-    auto balances = ledger_.all_balances();
+    auto balances = chain_manager_.all_balances();
 
     for (const auto &[address, amount] : balances) {
       storage_->save_balance(address, amount);

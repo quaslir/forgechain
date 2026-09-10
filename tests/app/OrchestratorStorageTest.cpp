@@ -62,7 +62,7 @@ Transaction make_signed_tx(const Wallet &sender, const str &recipient,
 void mine_blocks_locally(Orchestrator &orch, int count,
                           uint32_t difficulty = 1) {
   for (int i = 0; i < count; ++i) {
-    HashBytes prev_hash = orch.chain_.latest().hash_;
+    HashBytes prev_hash = orch.chain_manager_.latest_hash();
     Block mined = mine_block(1, prev_hash,
                              static_cast<uint64_t>(1700000000 + i), difficulty,
                              {});
@@ -126,7 +126,7 @@ TEST(Orchestrator, FreshDbPathStartsWithOnlyGenesisAndNoStoredBalances) {
   config.db_path = db.path();
 
   Orchestrator orch(config);
-  EXPECT_EQ(orch.chain_.size(), 1u);
+  EXPECT_EQ(orch.chain_manager_.chain_height(), 1u);
 }
 
 TEST(Orchestrator, StopPersistsAllMinedBlocksToStorage) {
@@ -137,7 +137,7 @@ TEST(Orchestrator, StopPersistsAllMinedBlocksToStorage) {
 
   Orchestrator orch(config);
   mine_blocks_locally(orch, 3);
-  ASSERT_EQ(orch.chain_.size(), 4u);
+  ASSERT_EQ(orch.chain_manager_.chain_height(), 4u);
   ASSERT_TRUE(orch.storage_.has_value());
 
   orch.stop();
@@ -154,12 +154,12 @@ TEST(Orchestrator, ChainHeightSurvivesDestructionAndReconstruction) {
   {
     Orchestrator orch(config);
     mine_blocks_locally(orch, 5);
-    ASSERT_EQ(orch.chain_.size(), 6u);
+    ASSERT_EQ(orch.chain_manager_.chain_height(), 6u);
   }
 
   {
     Orchestrator orch(config);
-    EXPECT_EQ(orch.chain_.size(), 6u)
+    EXPECT_EQ(orch.chain_manager_.chain_height(), 6u)
         << "chain height did not survive a full destroy+reconstruct cycle";
   }
 }
@@ -177,17 +177,17 @@ TEST(Orchestrator, RestoredBlocksMatchOriginalHashesInOrder) {
   {
     Orchestrator orch(config);
     mine_blocks_locally(orch, 3);
-    hash_at_1 = orch.chain_.at(1).hash_;
-    hash_at_2 = orch.chain_.at(2).hash_;
-    hash_at_3 = orch.chain_.at(3).hash_;
+    hash_at_1 = orch.chain_manager_.block_at(1).hash_;
+    hash_at_2 = orch.chain_manager_.block_at(2).hash_;
+    hash_at_3 = orch.chain_manager_.block_at(3).hash_;
   }
 
   {
     Orchestrator orch(config);
-    ASSERT_EQ(orch.chain_.size(), 4u);
-    EXPECT_EQ(orch.chain_.at(1).hash_, hash_at_1);
-    EXPECT_EQ(orch.chain_.at(2).hash_, hash_at_2);
-    EXPECT_EQ(orch.chain_.at(3).hash_, hash_at_3);
+    ASSERT_EQ(orch.chain_manager_.chain_height(), 4u);
+    EXPECT_EQ(orch.chain_manager_.block_at(1).hash_, hash_at_1);
+    EXPECT_EQ(orch.chain_manager_.block_at(2).hash_, hash_at_2);
+    EXPECT_EQ(orch.chain_manager_.block_at(3).hash_, hash_at_3);
   }
 }
 
@@ -202,21 +202,21 @@ TEST(Orchestrator, BalancesSurviveDestructionAndReconstruction) {
 
   {
     Orchestrator orch(config);
-    orch.ledger_.set_balance(alice.address, 1000);
+    orch.chain_manager_.set_balance(alice.address, 1000);
 
     Transaction tx = make_signed_tx(alice, bob.address, 250, 5);
-    HashBytes prev_hash = orch.chain_.latest().hash_;
+    HashBytes prev_hash = orch.chain_manager_.latest_hash();
     Block mined = mine_block(1, prev_hash, 1700000000, 1, {tx});
     orch.node_.submit_block(mined);
 
-    ASSERT_EQ(orch.ledger_.get_balance(alice.address), std::optional<uint64_t>(745));
-    ASSERT_EQ(orch.ledger_.get_balance(bob.address), std::optional<uint64_t>(250));
+    ASSERT_EQ(orch.chain_manager_.get_balance(alice.address), std::optional<uint64_t>(745));
+    ASSERT_EQ(orch.chain_manager_.get_balance(bob.address), std::optional<uint64_t>(250));
   }
 
   {
     Orchestrator orch(config);
-    EXPECT_EQ(orch.ledger_.get_balance(alice.address), std::optional<uint64_t>(745));
-    EXPECT_EQ(orch.ledger_.get_balance(bob.address), std::optional<uint64_t>(250));
+    EXPECT_EQ(orch.chain_manager_.get_balance(alice.address), std::optional<uint64_t>(745));
+    EXPECT_EQ(orch.chain_manager_.get_balance(bob.address), std::optional<uint64_t>(250));
   }
 }
 
@@ -249,7 +249,7 @@ TEST(Orchestrator, ReconstructingAfterMultipleStopCallsStillRestoresCorrectly) {
   }
 
   Orchestrator orch(config);
-  EXPECT_EQ(orch.chain_.size(), 3u);
+  EXPECT_EQ(orch.chain_manager_.chain_height(), 3u);
 }
 
 TEST(Orchestrator, CorruptedStorageWithAGapInHeightsThrowsOnConstruction) {

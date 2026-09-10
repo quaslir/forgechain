@@ -1,4 +1,5 @@
 #include "app/RpcServer.hpp"
+#include "chain/ChainManager.hpp"
 #include "core/Transaction.hpp"
 
 #include "crypto/CommonTypes.hpp"
@@ -14,8 +15,9 @@
 #include <thread>
 #include <utility>
 namespace forgechain::app {
-RpcServer::RpcServer(network::Node &node, uint16_t port)
-    : node_(node), port_(port) {}
+RpcServer::RpcServer(network::Node &node, uint16_t port,
+                     chain::ChainManager &chain)
+    : node_(node), port_(port), chain_(chain) {}
 
 bool RpcServer::start() {
   listener_ = network::listen_on(port_);
@@ -77,7 +79,7 @@ crypto::str RpcServer::handle_command(const crypto::str &line) {
     iss >> address;
     if (address.empty())
       return "ERROR_EMPTY_ADDRESS";
-    auto balance = node_.get_balance(address);
+    auto balance = chain_.get_balance(address);
     if (balance.has_value()) {
       return std::to_string(*balance);
     }
@@ -100,7 +102,7 @@ crypto::str RpcServer::handle_command(const crypto::str &line) {
     node_.submit_transaction(*tx);
     return "OK";
   } else if (command == "HEIGHT") {
-    return std::to_string(node_.chain_height());
+    return std::to_string(chain_.chain_height());
   } else if (command == "PEERS") {
     return std::to_string(node_.peer_count());
   }

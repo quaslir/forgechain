@@ -12,9 +12,11 @@ include(GoogleTest)
 
 function(add_forgechain_test_executable name)
     add_executable(${name} ${ARGN})
+    target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     target_link_libraries(${name} PRIVATE
         crypto
         core
+        chain
         network
         consensus
         storage

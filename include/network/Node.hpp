@@ -1,11 +1,7 @@
 #pragma once
 
+#include "chain/ChainManager.hpp"
 #include "core/Block.hpp"
-#include "core/Blockchain.hpp"
-#include "core/ForkResolution.hpp"
-#include "core/Ledger.hpp"
-#include "core/Mempool.hpp"
-#include "core/OrphanPool.hpp"
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "network/AddressBook.hpp"
@@ -22,7 +18,6 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <thread>
 #include <vector>
 namespace forgechain::network {
@@ -44,9 +39,7 @@ constexpr size_t TARGET_OUTBOUND_PEERS = 8;
 constexpr auto GOSSIP_INTERVAL = std::chrono::seconds(30);
 class Node {
 public:
-  Node(uint16_t listen_port, VersionInfo info, core::Blockchain &blockchain,
-       core::Mempool &mempool, core::OrphanPool &orphan_pool,
-       core::Ledger &ledger);
+  Node(uint16_t listen_port, VersionInfo info, chain::ChainManager &chain);
   ~Node();
   bool start();
   void stop();
@@ -57,19 +50,12 @@ public:
   [[nodiscard]] std::vector<crypto::str> peers() const;
   [[nodiscard]] size_t peer_count() const;
   [[nodiscard]] std::vector<crypto::str> book() const;
-  void submit_block(const core::Block &block);
-  void submit_transaction(const core::Transaction &tx);
-  [[nodiscard]] size_t chain_height() const;
-  [[nodiscard]] std::optional<uint64_t>
-  get_balance(const crypto::str &address) const;
-  [[nodiscard]] crypto::HashBytes latest_hash() const;
-  [[nodiscard]] std::vector<core::Transaction>
-  transactions_for_block(size_t limit) const;
-  [[nodiscard]] std::vector<core::Transaction> mempool_snapshot() const;
-  void set_balance(const crypto::str &address, uint64_t amount);
+
   void remember_peer(const crypto::str &host, uint16_t port);
   void set_logger(
       std::function<void(const crypto::str &, const crypto::str &)> logger);
+  void submit_block(const core::Block &block);
+  void submit_transaction(const core::Transaction &tx);
 
 private:
   void peer_loop(std::shared_ptr<Peer> peer_owner);
@@ -90,22 +76,17 @@ private:
   void handle_ping(Peer *peer);
   void handle_pong();
   void handle_peers(Peer *peer, const crypto::bytes &payload);
-  [[nodiscard]] bool apply_block_to_ledger(const core::Block &block);
+
   [[nodiscard]] bool already_connected(const crypto::str &host,
                                        uint16_t port) const;
   [[nodiscard]] size_t outbound_peer_count() const;
-  std::optional<std::vector<crypto::HashBytes>>
-  try_reorg(core::ForkChain &&fork_chain);
   void gossip_peers();
   void send_peer_list(Peer *peer, const PeerAddress &peer_addr);
 
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};
-  core::Blockchain &blockchain_;
-  core::Mempool &mempool_;
-  core::OrphanPool &orphan_pool_;
-  core::Ledger &ledger_;
+  chain::ChainManager &chain_;
   VectorPeers peers_;
   std::atomic<bool> running_{false};
   std::atomic<bool> stopping_{false};
@@ -114,8 +95,6 @@ private:
   std::thread ping_thread_;
   std::thread connect_thread_;
   mutable std::mutex peers_mutex_;
-  mutable std::mutex chain_mutex_;
-  mutable std::mutex orphan_mutex_;
 
   AddressBook address_book_;
   std::function<void(const crypto::str &, const crypto::str &)> logger_;

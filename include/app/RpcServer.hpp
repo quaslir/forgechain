@@ -1,5 +1,6 @@
 #pragma once
 
+#include "chain/ChainManager.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "network/Node.hpp"
 #include "network/TcpSocket.hpp"
@@ -10,7 +11,7 @@
 namespace forgechain::app {
 class RpcServer {
 public:
-  RpcServer(network::Node &node, uint16_t port);
+  RpcServer(network::Node &node, uint16_t port, chain::ChainManager &chain);
   ~RpcServer();
 
   RpcServer(const RpcServer &) = delete;
@@ -29,6 +30,7 @@ private:
   [[nodiscard]] bool api_key_required() const;
   network::Node &node_;
   uint16_t port_;
+  chain::ChainManager &chain_;
   network::TcpSocket listener_{-1};
   std::atomic<bool> running_{false};
   std::thread accept_thread_;

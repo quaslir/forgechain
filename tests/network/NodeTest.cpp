@@ -1,3 +1,5 @@
+#include "support/TestChainAccess.hpp"
+
 #include "network/Node.hpp"
 #include "network/Handshake.hpp"
 #include "core/Blockchain.hpp"
@@ -26,6 +28,7 @@
 using namespace forgechain::network;
 using namespace forgechain::core;
 using namespace forgechain::crypto;
+using forgechain::testsupport::TestNode;
 
 namespace {
 
@@ -45,15 +48,6 @@ VersionInfo make_version(uint16_t listen_port, uint64_t height = 0) {
                        .node_id = next_test_node_id()};
 }
 
-struct TestNode : Node {
-    Blockchain chain;
-    Mempool mempool;
-    OrphanPool orphan_pool;
-    Ledger ledger;
-
-    TestNode(uint16_t port, VersionInfo info)
-        : Node(port, info, chain, mempool, orphan_pool, ledger), mempool(1000) {}
-};
 
 ::testing::AssertionResult RunWithTimeout(std::chrono::milliseconds timeout,
                                            const std::function<void()>& fn) {
@@ -327,15 +321,15 @@ TEST(Node, TransactionsForBlockFiltersOutTransactionSenderCannotAfford) {
     TestNode server(0, make_version(0));
     TestWallet alice = make_test_wallet();
     TestWallet bob = make_test_wallet();
-    server.ledger.set_balance(alice.address, 10);
-    server.ledger.set_balance(bob.address, 100);
+    server.ledger().set_balance(alice.address, 10);
+    server.ledger().set_balance(bob.address, 100);
 
     Transaction affordable = make_signed_test_tx(bob, "charlie-address", 20);
     Transaction unaffordable = make_signed_test_tx(alice, "charlie-address", 500);
-    server.mempool.add_transaction(affordable, bob.keys.public_key);
-    server.mempool.add_transaction(unaffordable, alice.keys.public_key);
+    server.mempool().add_transaction(affordable, bob.keys.public_key);
+    server.mempool().add_transaction(unaffordable, alice.keys.public_key);
 
-    auto selected = server.transactions_for_block(10);
+    auto selected = server.chain_manager().transactions_for_block(10);
 
     ASSERT_EQ(selected.size(), 1u);
     EXPECT_EQ(selected[0].sender_, bob.address);
@@ -345,15 +339,15 @@ TEST(Node, TransactionsForBlockKeepsBothWhenSequentiallyAffordable) {
     TestNode server(0, make_version(0));
     TestWallet alice = make_test_wallet();
     TestWallet bob = make_test_wallet();
-    server.ledger.set_balance(alice.address, 100);
-    server.ledger.set_balance(bob.address, 0);
+    server.ledger().set_balance(alice.address, 100);
+    server.ledger().set_balance(bob.address, 0);
 
     Transaction first = make_signed_test_tx(alice, bob.address, 60);
     Transaction second = make_signed_test_tx(bob, "charlie-address", 30);
-    server.mempool.add_transaction(first, alice.keys.public_key);
-    server.mempool.add_transaction(second, bob.keys.public_key);
+    server.mempool().add_transaction(first, alice.keys.public_key);
+    server.mempool().add_transaction(second, bob.keys.public_key);
 
-    auto selected = server.transactions_for_block(10);
+    auto selected = server.chain_manager().transactions_for_block(10);
 
     ASSERT_EQ(selected.size(), 2u);
 }
@@ -362,23 +356,23 @@ TEST(Node, TransactionsForBlockDoesNotMutateRealLedger) {
     TestNode server(0, make_version(0));
     TestWallet alice = make_test_wallet();
     TestWallet bob = make_test_wallet();
-    server.ledger.set_balance(alice.address, 100);
-    server.ledger.set_balance(bob.address, 0);
+    server.ledger().set_balance(alice.address, 100);
+    server.ledger().set_balance(bob.address, 0);
 
     Transaction tx = make_signed_test_tx(alice, bob.address, 60);
-    server.mempool.add_transaction(tx, alice.keys.public_key);
+    server.mempool().add_transaction(tx, alice.keys.public_key);
 
-    auto ignored = server.transactions_for_block(10);
+    auto ignored = server.chain_manager().transactions_for_block(10);
     (void)ignored;
 
-    EXPECT_EQ(server.ledger.get_balance(alice.address), std::optional<uint64_t>(100));
-    EXPECT_EQ(server.ledger.get_balance(bob.address), std::optional<uint64_t>(0));
+    EXPECT_EQ(server.ledger().get_balance(alice.address), std::optional<uint64_t>(100));
+    EXPECT_EQ(server.ledger().get_balance(bob.address), std::optional<uint64_t>(0));
 }
 
 TEST(Node, TransactionsForBlockReturnsEmptyWhenMempoolEmpty) {
     TestNode server(0, make_version(0));
 
-    auto selected = server.transactions_for_block(10);
+    auto selected = server.chain_manager().transactions_for_block(10);
 
     EXPECT_TRUE(selected.empty());
 }
@@ -386,15 +380,15 @@ TEST(Node, TransactionsForBlockReturnsEmptyWhenMempoolEmpty) {
 TEST(Node, TransactionsForBlockRespectsLimitAfterFiltering) {
     TestNode server(0, make_version(0));
     TestWallet alice = make_test_wallet();
-    server.ledger.set_balance(alice.address, 1000);
+    server.ledger().set_balance(alice.address, 1000);
 
     for (int i = 0; i < 5; ++i) {
         Transaction tx = make_signed_test_tx(alice, "recipient-address",
                                               static_cast<uint64_t>(10 + i));
-        server.mempool.add_transaction(tx, alice.keys.public_key);
+        server.mempool().add_transaction(tx, alice.keys.public_key);
     }
 
-    auto selected = server.transactions_for_block(2);
+    auto selected = server.chain_manager().transactions_for_block(2);
 
     EXPECT_EQ(selected.size(), 2u);
 }
