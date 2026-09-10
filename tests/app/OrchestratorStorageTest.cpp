@@ -201,23 +201,36 @@ TEST(Orchestrator, BalancesSurviveDestructionAndReconstruction) {
   Wallet bob = make_wallet();
 
   {
-    Orchestrator orch(config);
-    orch.chain_manager_.set_balance(alice.address, 1000);
+      Orchestrator orch(config);
 
-    Transaction tx = make_signed_tx(alice, bob.address, 250, 5);
-    HashBytes prev_hash = orch.chain_manager_.latest_hash();
-    Block mined = mine_block(1, prev_hash, 1700000000, 1, {tx});
-    orch.node_.submit_block(mined);
+      for (int i = 0; i < 6; i++) {
+        Transaction coinbase{kCoinbaseSender, alice.address, 50, bytes{}, 0};
+        Block funding = mine_block(1, orch.chain_manager_.latest_hash(),
+                                   static_cast<uint64_t>(1700000000 + i), 1,
+                                   {coinbase});
+        orch.node_.submit_block(funding);
+      }
+      ASSERT_EQ(orch.chain_manager_.get_balance(alice.address),
+                std::optional<uint64_t>(300));
 
-    ASSERT_EQ(orch.chain_manager_.get_balance(alice.address), std::optional<uint64_t>(745));
-    ASSERT_EQ(orch.chain_manager_.get_balance(bob.address), std::optional<uint64_t>(250));
-  }
+      Transaction tx = make_signed_tx(alice, bob.address, 100, 5);
+      Block mined = mine_block(1, orch.chain_manager_.latest_hash(),
+                               1700000100, 1, {tx});
+      orch.node_.submit_block(mined);
 
-  {
-    Orchestrator orch(config);
-    EXPECT_EQ(orch.chain_manager_.get_balance(alice.address), std::optional<uint64_t>(745));
-    EXPECT_EQ(orch.chain_manager_.get_balance(bob.address), std::optional<uint64_t>(250));
-  }
+      ASSERT_EQ(orch.chain_manager_.get_balance(alice.address),
+                std::optional<uint64_t>(195));
+      ASSERT_EQ(orch.chain_manager_.get_balance(bob.address),
+                std::optional<uint64_t>(100));
+    }
+
+    {
+      Orchestrator orch(config);
+      EXPECT_EQ(orch.chain_manager_.get_balance(alice.address),
+                std::optional<uint64_t>(195));
+      EXPECT_EQ(orch.chain_manager_.get_balance(bob.address),
+                std::optional<uint64_t>(100));
+    }
 }
 
 TEST(Orchestrator, MultipleStopCallsDoNotCorruptStorage) {

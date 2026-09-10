@@ -7,6 +7,7 @@
 #include "core/Mempool.hpp"
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
+#include "storage/Storage.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -15,8 +16,12 @@
 #include <utility>
 #include <vector>
 namespace forgechain::chain {
-ChainManager::ChainManager(size_t mempool_max_size)
-    : mempool_(mempool_max_size) {}
+ChainManager::ChainManager(size_t mempool_max_size, storage::Storage *storage)
+    : mempool_(mempool_max_size), storage_(storage) {
+  if (storage_ && storage_->block_count() == 0) {
+    storage_->save_block(blockchain_[0], 0);
+  }
+}
 
 BlockOutcome ChainManager::submit_block(const core::Block &block) {
   BlockOutcome outcome;
@@ -37,6 +42,11 @@ BlockOutcome ChainManager::submit_block(const core::Block &block) {
       blockchain_.add_block(std::move(saved));
       outcome.status = BlockOutcome::Status::Accepted;
       outcome.to_broadcast.push_back(block.hash_);
+
+      // save
+      if (storage_) {
+        storage_->save_block(block, blockchain_.size() - 1);
+      }
     }
     break;
   case core::BlockValidation::ForkCandidate:
@@ -55,9 +65,12 @@ void ChainManager::set_balance(const crypto::str &address, uint64_t amount) {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
   ledger_.set_balance(address, amount);
 }
-void ChainManager::restore_block(core::Block &&block) {
+bool ChainManager::restore_block(core::Block &&block) {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  if (!apply_block_to_ledger(block))
+    return false;
   blockchain_.add_block(std::move(block));
+  return true;
 }
 
 size_t ChainManager::chain_height() const {
@@ -225,6 +238,16 @@ ChainManager::try_reorg(core::ForkChain &&fork_chain) {
     ledger_.apply_transaction(tx);
   }
 
+  if (storage_) {
+    size_t fork_point = blockchain_.size() - new_hashes.size();
+    std::vector<core::Block> new_branch;
+    new_branch.reserve(new_hashes.size());
+    for (size_t i = fork_point; i < blockchain_.size(); i++) {
+      new_branch.push_back(blockchain_[i]);
+    }
+
+    storage_->replace_blocks_from(fork_point, new_branch);
+  }
   return new_hashes;
 }
 } // namespace forgechain::chain

@@ -15,6 +15,7 @@
 #include <ctime>
 #include <iostream>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -24,7 +25,11 @@ namespace forgechain::app {
 
 Orchestrator::Orchestrator(OrchestratorConfig config)
     : config_(std::move(config)), log_(config_.node_name),
-      chain_manager_(config_.kMaxPending),
+      storage_(config_.db_path.empty() ? std::nullopt
+                                       : std::optional<storage::Storage>(
+                                             std::in_place, config_.db_path)),
+      chain_manager_(config_.kMaxPending,
+                     storage_.has_value() ? &*storage_ : nullptr),
       node_(config_.listen_port,
             network::VersionInfo{.protocol_version = 1,
                                  .chain_height = 0,
@@ -32,25 +37,18 @@ Orchestrator::Orchestrator(OrchestratorConfig config)
                                  .listen_port = config_.listen_port,
                                  .node_id = network::generate_node_id()},
             chain_manager_) {
-  if (!config_.db_path.empty()) {
-    storage_.emplace(config_.db_path);
-  }
   if (storage_.has_value()) {
     size_t size = storage_->block_count();
-    if (size > 1) {
-      for (size_t i = 1; i < size; i++) {
-        auto block = storage_->load_block(i);
-        if (!block.has_value()) {
-          throw std::runtime_error(
-              "storage corrupted: missing block at height " +
-              std::to_string(i));
-        }
-        chain_manager_.restore_block(std::move(*block));
+    for (size_t i = 1; i < size; i++) {
+      auto block = storage_->load_block(i);
+      if (!block.has_value()) {
+        throw std::runtime_error("storage corrupted: missing block at height " +
+                                 std::to_string(i));
       }
-    }
-    auto balances = storage_->load_all_balances();
-    for (const auto &[address, amount] : balances) {
-      chain_manager_.set_balance(address, amount);
+      if (!chain_manager_.restore_block(std::move(*block))) {
+        throw std::runtime_error("storage corrupted: block at height " +
+                                 std::to_string(i) + " does not apply cleanly");
+      }
     }
   }
 
@@ -358,17 +356,6 @@ void Orchestrator::stop() {
     rpc_server_->stop();
   }
   node_.stop();
-
-  if (storage_.has_value()) {
-    for (size_t i = 0; i < chain_manager_.chain_height(); i++) {
-      storage_->save_block(chain_manager_.block_at(i), i);
-    }
-    auto balances = chain_manager_.all_balances();
-
-    for (const auto &[address, amount] : balances) {
-      storage_->save_balance(address, amount);
-    }
-  }
 }
 Orchestrator::~Orchestrator() { stop(); }
 

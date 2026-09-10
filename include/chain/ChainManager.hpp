@@ -7,6 +7,7 @@
 #include "core/OrphanPool.hpp"
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
+#include "storage/Storage.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -25,7 +26,8 @@ struct BlockOutcome {
 
 class ChainManager {
 public:
-  explicit ChainManager(size_t mempool_max_size);
+  explicit ChainManager(size_t mempool_max_size,
+                        storage::Storage *storage = nullptr);
 
   ChainManager(const ChainManager &) = delete;
   ChainManager &operator=(const ChainManager &) = delete;
@@ -33,7 +35,7 @@ public:
   BlockOutcome submit_block(const core::Block &block);
   bool submit_transaction(const core::Transaction &tx);
   void set_balance(const crypto::str &address, uint64_t amount);
-  void restore_block(core::Block &&block);
+  bool restore_block(core::Block &&block);
 
   [[nodiscard]] size_t chain_height() const;
   [[nodiscard]] crypto::HashBytes latest_hash() const;
@@ -66,7 +68,7 @@ private:
   core::Mempool mempool_;
   core::OrphanPool orphan_pool_;
   core::Ledger ledger_;
-
+  storage::Storage *storage_;
   mutable std::mutex chain_mutex_;
   mutable std::mutex orphan_mutex_;
 };

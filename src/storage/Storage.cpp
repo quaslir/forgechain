@@ -91,6 +91,42 @@ size_t Storage::block_count() const {
   return static_cast<size_t>(stmt.column_int64(0));
 }
 
+void Storage::delete_blocks_from(size_t height) {
+  SqliteStatement stmt(connection_, "DELETE FROM blocks WHERE height >= ?");
+  if (!stmt.is_valid()) {
+    throw std::runtime_error("failed to prepare DELETE for blocks");
+  }
+  stmt.bind_int_64(1, static_cast<int64_t>(height));
+
+  if (stmt.step() != SQLITE_DONE) {
+    throw std::runtime_error("failed to delete blocks");
+  }
+}
+
+void Storage::replace_blocks_from(size_t height,
+                                  const std::vector<core::Block> &blocks) {
+  SqliteStatement begin(connection_, "BEGIN");
+  if (!begin.is_valid() || begin.step() != SQLITE_DONE) {
+    throw std::runtime_error("failed to begin transaction");
+  }
+
+  try {
+    delete_blocks_from(height);
+    for (size_t i = 0; i < blocks.size(); i++) {
+      save_block(blocks[i], height + i);
+    }
+  } catch (...) {
+    SqliteStatement rollback(connection_, "ROLLBACK");
+    [[maybe_unused]] int rc = rollback.step();
+    throw;
+  }
+
+  SqliteStatement commit(connection_, "COMMIT");
+  if (!commit.is_valid() || commit.step() != SQLITE_DONE) {
+    throw std::runtime_error("failed to commit transaction");
+  }
+}
+
 void Storage::save_balance(const crypto::str &address, uint64_t amount) {
   SqliteStatement stmt(
       connection_,

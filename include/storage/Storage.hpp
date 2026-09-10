@@ -16,7 +16,9 @@ public:
   void save_block(const core::Block &block, size_t height);
   [[nodiscard]] std::optional<core::Block> load_block(size_t height) const;
   [[nodiscard]] size_t block_count() const;
-
+  void delete_blocks_from(size_t height);
+  void replace_blocks_from(size_t height,
+                           const std::vector<core::Block> &blocks);
   void save_balance(const crypto::str &address, uint64_t amount);
   [[nodiscard]] std::optional<uint64_t>
   load_balance(const crypto::str &address) const;

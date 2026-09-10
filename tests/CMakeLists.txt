@@ -77,5 +77,9 @@ storage/SqliteStatementTest.cpp
 storage/StorageTest.cpp
 )
 
+add_forgechain_test_executable(chain_tests
+    chain/ChainManagerPersistenceTest.cpp
+)
+
 
 target_include_directories(app_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
