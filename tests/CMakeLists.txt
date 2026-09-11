@@ -45,6 +45,7 @@ add_forgechain_test_executable(core_tests
 add_forgechain_test_executable(consensus_tests
     consensus/ProofOfWorkTest.cpp
     consensus/RetargetTest.cpp
+    consensus/NextDifficultyTest.cpp
     consensus/CoinbaseValidationTest.cpp
 )
 

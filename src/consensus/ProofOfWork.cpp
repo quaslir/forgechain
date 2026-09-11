@@ -122,7 +122,7 @@ bool validate_coinbase_amount(const std::vector<core::Transaction> &txs) {
 
 uint32_t next_difficulty(size_t height, const ConsensusParams& params, const std::function<const core::Block&(size_t)>& block_at) {
     const size_t interval = params.retarget_interval;
-    if(interval == 0 || height <= interval) return params.initial_difficulty;
+    if(interval < 2 || height <= interval) return params.initial_difficulty;
     const core::Block& parent = block_at(height - 1);
     if(height % interval != 0) return parent.difficulty_;
 
