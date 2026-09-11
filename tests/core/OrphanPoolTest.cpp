@@ -1,6 +1,7 @@
 #include "core/OrphanPool.hpp"
 #include "core/Block.hpp"
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cstddef>
 #include <utility>
 #include <vector>
@@ -200,4 +201,44 @@ TEST(OrphanPool, OrphanContentIsPreservedThroughAddAndFind) {
     EXPECT_EQ(found->difficulty_, 15u);
     EXPECT_EQ(found->nonce_, 999u);
     EXPECT_EQ(found->prev_hash_, parent);
+}
+
+TEST(OrphanPool, ChildrenOfReturnsEmptyWhenNoChildren) {
+    OrphanPool pool;
+    Block parent(1, fakeHash(0x01), 1700000000, {});
+    pool.add_orphan(Block(parent));
+
+    EXPECT_TRUE(pool.children_of(parent.hash_).empty());
+}
+
+TEST(OrphanPool, ChildrenOfReturnsAllDirectChildren) {
+    OrphanPool pool;
+    Block parent(1, fakeHash(0x01), 1700000000, {});
+    Block child_a(1, parent.hash_, 1700000001, {});
+    Block child_b(1, parent.hash_, 1700000002, {});
+    Block unrelated(1, fakeHash(0x02), 1700000003, {});
+    pool.add_orphan(Block(child_a));
+    pool.add_orphan(Block(child_b));
+    pool.add_orphan(Block(unrelated));
+
+    auto children = pool.children_of(parent.hash_);
+
+    ASSERT_EQ(children.size(), 2u);
+    std::vector<HashBytes> hashes{children[0].hash_, children[1].hash_};
+    EXPECT_NE(std::find(hashes.begin(), hashes.end(), child_a.hash_), hashes.end());
+    EXPECT_NE(std::find(hashes.begin(), hashes.end(), child_b.hash_), hashes.end());
+}
+
+TEST(OrphanPool, ChildrenOfDoesNotReturnGrandchildren) {
+    OrphanPool pool;
+    Block parent(1, fakeHash(0x01), 1700000000, {});
+    Block child(1, parent.hash_, 1700000001, {});
+    Block grandchild(1, child.hash_, 1700000002, {});
+    pool.add_orphan(Block(child));
+    pool.add_orphan(Block(grandchild));
+
+    auto children = pool.children_of(parent.hash_);
+
+    ASSERT_EQ(children.size(), 1u);
+    EXPECT_EQ(children[0].hash_, child.hash_);
 }

@@ -484,3 +484,22 @@ TEST(ForkResolution, ZeroDifficultyBlocksContributeMinimalButNonZeroWork) {
 
     EXPECT_TRUE(is_fork_heavier(chain, fork));
 }
+
+TEST(ForkResolution, ForkWorkIsAncestorWorkPlusEachBlockWork) {
+    Blockchain chain;
+    Block a = makeChild(chain.latest(), 1000);
+    a.difficulty_ = 3;
+    chain.add_block(Block(a));
+    const Block &ancestor = chain.latest();
+
+    Block f1 = makeChild(ancestor, 2000);
+    f1.difficulty_ = 4;
+    Block f2 = makeChild(f1, 2001);
+    f2.difficulty_ = 5;
+    ForkChain fork = makeForkChain(ancestor, {f1, f2});
+
+    // Fork blocks never went through add_block, so their cumulative_work_ is
+    // zero -- fork_work must use block_work(), not cumulative_work_.
+    ASSERT_EQ(f1.cumulative_work_, 0u);
+    EXPECT_EQ(fork_work(fork), ancestor.cumulative_work_ + 16u + 32u);
+}

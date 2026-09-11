@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <optional>
 #include <utility>
+#include <vector>
 namespace forgechain::core {
 void OrphanPool::add_orphan(Block &&block) {
   crypto::HashBytes hash = block.hash_;
@@ -36,4 +37,16 @@ void OrphanPool::remove_orphan(const crypto::HashBytes &hash) {
 }
 
 size_t OrphanPool::orphan_count() const { return orphan_pool_.size(); }
+
+std::vector<Block>
+OrphanPool::children_of(const crypto::HashBytes &hash) const {
+  std::vector<Block> children;
+  for (const auto &block : orphan_pool_) {
+    if (block.second.prev_hash_ == hash) {
+      children.push_back(block.second);
+    }
+  }
+
+  return children;
+}
 } // namespace forgechain::core

@@ -64,12 +64,14 @@ public:
   [[nodiscard]] std::vector<std::pair<crypto::str, uint64_t>>
   all_balances() const;
   [[nodiscard]] uint32_t next_block_difficulty() const;
+
 private:
   [[nodiscard]] bool apply_block_to_ledger(const core::Block &block);
   BlockOutcome handle_fork_candidate(const core::Block &block);
   std::optional<std::vector<crypto::HashBytes>>
   try_reorg(core::ForkChain &&fork_chain);
-
+  [[nodiscard]] std::vector<core::Block>
+  find_fork_tips(const core::Block &start) const;
   core::Blockchain blockchain_;
   core::Mempool mempool_;
   core::OrphanPool orphan_pool_;
@@ -80,6 +82,7 @@ private:
   mutable std::mutex chain_mutex_;
   mutable std::mutex orphan_mutex_;
 
-  std::function<const core::Block&(size_t index)> block_at_callback_; // MUST be called with chain_mutex_!!!
+  std::function<const core::Block &(size_t index)>
+      block_at_callback_; // MUST be called with chain_mutex_!!!
 };
 } // namespace forgechain::chain

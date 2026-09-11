@@ -9,16 +9,17 @@
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "storage/Storage.hpp"
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
 #include <functional>
 #include <mutex>
 #include <optional>
+#include <stack>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <algorithm>
 namespace forgechain::chain {
 ChainManager::ChainManager(size_t mempool_max_size,
                            consensus::ConsensusParams params,
@@ -35,7 +36,7 @@ ChainManager::ChainManager(size_t mempool_max_size,
     storage_->save_block(blockchain_[0], 0);
   }
 
- block_at_callback_ = [this](size_t index) -> const core::Block & {
+  block_at_callback_ = [this](size_t index) -> const core::Block & {
     return blockchain_.at(index);
   };
 }
@@ -190,8 +191,9 @@ ChainManager::all_balances() const {
   return ledger_.all_balances();
 }
 uint32_t ChainManager::next_block_difficulty() const {
-std::lock_guard<std::mutex> chain_lock(chain_mutex_);
-return consensus::next_difficulty(blockchain_.size(), params_, block_at_callback_);
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  return consensus::next_difficulty(blockchain_.size(), params_,
+                                    block_at_callback_);
 }
 bool ChainManager::apply_block_to_ledger(const core::Block &block) {
   const auto &transactions = block.transactions_;
@@ -218,11 +220,35 @@ BlockOutcome ChainManager::handle_fork_candidate(const core::Block &block) {
     outcome.status = BlockOutcome::Status::NeedParent;
     outcome.missing_parent = block.prev_hash_;
   } else {
-    auto reorg_hashes = try_reorg(std::move(*fork_chain));
+    auto tips = find_fork_tips(block);
+    std::optional<core::ForkChain> best;
+    uint64_t best_work = 0;
+
+
+    for(const auto& tip : tips) {
+        auto result = core::build_fork_chain(blockchain_, orphan_pool_, tip);
+        if(result == std::nullopt) continue;
+        uint64_t work = core::fork_work(*result);
+
+        if(!best.has_value() || work > best_work) {
+            best = std::move(*result);
+            best_work = work;
+        }
+
+    }
+
+    if(!best.has_value()) return outcome;
+
+    auto reorg_hashes = try_reorg(std::move(*best));
+
 
     if (reorg_hashes.has_value()) {
       outcome.status = BlockOutcome::Status::Reorged;
       outcome.to_broadcast = std::move(*reorg_hashes);
+
+      for(const auto& hash : outcome.to_broadcast) {
+          orphan_pool_.remove_orphan(hash);
+      }
     }
   }
 
@@ -285,4 +311,33 @@ ChainManager::try_reorg(core::ForkChain &&fork_chain) {
   }
   return new_hashes;
 }
+
+std::vector<core::Block>
+ChainManager::find_fork_tips(const core::Block &start) const {
+  std::stack<core::Block> stack;
+  std::vector<core::Block> tips;
+  size_t visited = 0;
+  stack.push(start);
+
+  while (!stack.empty() && visited < core::kMaxForkDepth) {
+    core::Block block = std::move(stack.top());
+    stack.pop();
+    visited++;
+    auto result = orphan_pool_.children_of(block.hash_);
+    if (result.empty())
+      tips.push_back(std::move(block));
+    else {
+      for (auto &&child : result) {
+        stack.push(std::move(child));
+      }
+    }
+  }
+
+  while (!stack.empty()) {
+    tips.push_back(std::move(stack.top()));
+    stack.pop();
+  }
+  return tips;
+}
+
 } // namespace forgechain::chain
