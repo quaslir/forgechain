@@ -2,6 +2,7 @@
 #include "core/Block.hpp"
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -9,6 +10,8 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
+#include <functional>
+#include "consensus/ConsensusParams.hpp"
 namespace forgechain::consensus {
 using forgechain::crypto::HashBytes;
 bool meets_target(const HashBytes &hash, uint32_t difficulty) {
@@ -115,6 +118,19 @@ bool validate_coinbase_amount(const std::vector<core::Transaction> &txs) {
   }
 
   return txs[index].amount_ <= mining_reward + fees_total;
+}
+
+uint32_t next_difficulty(size_t height, const ConsensusParams& params, const std::function<const core::Block&(size_t)>& block_at) {
+    const size_t interval = params.retarget_interval;
+    if(interval == 0 || height <= interval) return params.initial_difficulty;
+    const core::Block& parent = block_at(height - 1);
+    if(height % interval != 0) return parent.difficulty_;
+
+    uint64_t first = block_at(height - interval).timestamp_;
+    uint64_t last = parent.timestamp_;
+    uint64_t actual = last > first ? last - first : 0;
+    uint64_t expected = (interval - 1) * params.target_block_time;
+    return std::max(retarget(parent.difficulty_, actual, expected), params.min_difficulty);
 }
 
 } // namespace forgechain::consensus
