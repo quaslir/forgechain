@@ -37,13 +37,19 @@ std::optional<ForkChain> build_fork_chain(const Blockchain &chain,
   }
 }
 bool is_fork_heavier(const Blockchain &chain, const ForkChain &fork) {
+  uint64_t fork_total_work = fork_work(fork);
+
+  uint64_t chain_work = chain.latest().cumulative_work_;
+
+  return fork_total_work > chain_work;
+}
+
+uint64_t fork_work(const ForkChain &fork) {
   uint64_t fork_work = fork.common_ancestor.cumulative_work_;
   for (const auto &block : fork.blocks) {
     fork_work += block.block_work();
   }
 
-  uint64_t chain_work = chain.latest().cumulative_work_;
-
-  return fork_work > chain_work;
+  return fork_work;
 }
 } // namespace forgechain::core

@@ -97,6 +97,8 @@ private:
     std::unique_ptr<TcpSocket> socket_;
 };
 
+constexpr uint32_t kDifficulty = forgechain::consensus::kTestParams.initial_difficulty;
+
 }  // namespace
 
 TEST(Propagation, ValidBlockFromOnePeerReachesSecondPeer) {
@@ -118,8 +120,7 @@ TEST(Propagation, ValidBlockFromOnePeerReachesSecondPeer) {
     ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
-    constexpr uint32_t kTestDifficulty = 8;
-    Block mined = mine_block(1, node_a.blocks().latest().hash_, 1700000000, kTestDifficulty, {});
+    Block mined = mine_block(1, node_a.blocks().latest().hash_, 1700000000, kDifficulty, {});
     ASSERT_TRUE(source.send(MessageType::BLOCK, mined.serialize()));
 
     ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().has_block(mined.hash_); }, std::chrono::seconds(2)))
@@ -213,11 +214,10 @@ TEST(Propagation, BlockWithWrongPrevHashIsNeitherStoredNorRelayed) {
     ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
-    constexpr uint32_t kTestDifficulty = 8;
     HashBytes wrong_parent{};
     wrong_parent[0] = 0xAB;
     wrong_parent[1] = 0xCD;
-    Block orphan = mine_block(1, wrong_parent, 1700000000, kTestDifficulty, {});
+    Block orphan = mine_block(1, wrong_parent, 1700000000, kDifficulty, {});
     ASSERT_NE(orphan.prev_hash_, node_a.blocks().latest().hash_);
 
     size_t height_before = node_a.blocks().size();
@@ -249,11 +249,14 @@ TEST(Propagation, BlockWithTamperedHashIsNeitherStoredNorRelayed) {
     ASSERT_TRUE(source.connect(port_a, make_version(0)));
     ASSERT_TRUE(WaitUntil([&] { return node_a.peer_count() >= 2; }, std::chrono::seconds(1)));
 
-    constexpr uint32_t kTestDifficulty = 8;
-    Block mined = mine_block(1, node_a.blocks().latest().hash_, 1700000000, kTestDifficulty, {});
+    Block mined = mine_block(1, node_a.blocks().latest().hash_, 1700000000, kDifficulty, {});
 
     Block tampered = mined;
-    tampered.timestamp_ = mined.timestamp_ + 12345;
+    for (uint64_t offset = 1;; offset++) {
+        tampered.timestamp_ = mined.timestamp_ + offset;
+        if (!meets_target(tampered.compute_hash(), kDifficulty))
+            break;
+    }
     ASSERT_NE(tampered.compute_hash(), tampered.hash_)
         << "test setup invariant broken: tampering did not change compute_hash()";
 
@@ -288,26 +291,26 @@ TEST(Propagation, HeavierForkTriggersReorgAndPropagatesToPeer) {
 
     HashBytes genesisHash = node_a.blocks().latest().hash_;
 
-    constexpr uint32_t kWeakDifficulty = 6;
-    Block weakBlock = mine_block(1, genesisHash, 1700000000, kWeakDifficulty, {});
+    Block weakBlock = mine_block(1, genesisHash, 1700000000, kDifficulty, {});
     ASSERT_TRUE(source.send(MessageType::BLOCK, weakBlock.serialize()));
     ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().has_block(weakBlock.hash_); }, std::chrono::seconds(2)))
         << "Node A never accepted the initial weak block";
     ASSERT_TRUE(WaitUntil([&] { return node_b.blocks().has_block(weakBlock.hash_); }, std::chrono::seconds(2)))
         << "Node B never received the initial weak block";
 
-    constexpr uint32_t kHeavyDifficulty = 12;
-    Block heavyBlock = mine_block(1, genesisHash, 1700000001, kHeavyDifficulty, {});
-    ASSERT_NE(heavyBlock.hash_, weakBlock.hash_);
+    Block heavy1 = mine_block(1, genesisHash, 1700000001, kDifficulty, {});
+    Block heavyBlock = mine_block(1, heavy1.hash_, 1700000002, kDifficulty, {});
+    ASSERT_NE(heavy1.hash_, weakBlock.hash_);
+    ASSERT_TRUE(source.send(MessageType::BLOCK, heavy1.serialize()));
     ASSERT_TRUE(source.send(MessageType::BLOCK, heavyBlock.serialize()));
 
     ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
-        << "Node A never reorganized onto the heavier fork";
+        << "Node A never reorganized onto the longer fork";
     EXPECT_FALSE(node_a.blocks().has_block(weakBlock.hash_))
         << "Node A's weak block should have been discarded by the reorg";
 
     ASSERT_TRUE(WaitUntil([&] { return node_b.blocks().latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
-        << "Node B never received the heavier block via post-reorg broadcast";
+        << "Node B never received the longer branch via post-reorg broadcast";
 }
 
 TEST(Propagation, ReorgReturnsDiscardedTransactionToMempool) {
@@ -338,17 +341,17 @@ TEST(Propagation, ReorgReturnsDiscardedTransactionToMempool) {
     Transaction orphanedTx = make_signed_tx(alice, "bob-address", 100);
     auto orphanedTxHash = orphanedTx.compute_hash();
 
-    constexpr uint32_t kWeakDifficulty = 6;
-    Block weakBlock = mine_block(1, genesisHash, 1700000000, kWeakDifficulty, {orphanedTx});
+    Block weakBlock = mine_block(1, genesisHash, 1700000000, kDifficulty, {orphanedTx});
     ASSERT_TRUE(source.send(MessageType::BLOCK, weakBlock.serialize()));
     ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().has_block(weakBlock.hash_); }, std::chrono::seconds(2)));
 
-    constexpr uint32_t kHeavyDifficulty = 12;
-    Block heavyBlock = mine_block(1, genesisHash, 1700000001, kHeavyDifficulty, {});
+    Block heavy1 = mine_block(1, genesisHash, 1700000001, kDifficulty, {});
+    Block heavyBlock = mine_block(1, heavy1.hash_, 1700000002, kDifficulty, {});
+    ASSERT_TRUE(source.send(MessageType::BLOCK, heavy1.serialize()));
     ASSERT_TRUE(source.send(MessageType::BLOCK, heavyBlock.serialize()));
 
     ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
-        << "Node A never reorganized onto the heavier fork";
+        << "Node A never reorganized onto the longer fork";
 
     ASSERT_TRUE(WaitUntil([&] { return node_a.mempool().has_transaction(orphanedTxHash); }, std::chrono::seconds(2)))
         << "Discarded transaction was never returned to Node A's mempool after reorg";
@@ -380,7 +383,7 @@ TEST(Propagation, LedgerBalanceUpdatesOnBothNodesAfterBlockWithRealTransaction) 
 
     Transaction tx = make_signed_tx(alice, "bob-address", 250);
 
-    Block block = mine_block(1, node_a.blocks().latest().hash_, 1700000000, 8, {tx});
+    Block block = mine_block(1, node_a.blocks().latest().hash_, 1700000000, kDifficulty, {tx});
     ASSERT_TRUE(source.send(MessageType::BLOCK, block.serialize()));
 
     ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().has_block(block.hash_); }, std::chrono::seconds(2)))
@@ -429,7 +432,7 @@ TEST(Propagation, BlockWithUnaffordableTransactionIsRejectedNotJustSkipped) {
     Transaction tx = make_signed_tx(alice, "bob-address", 250);
 
     size_t heightBefore = node_a.blocks().size();
-    Block block = mine_block(1, node_a.blocks().latest().hash_, 1700000000, 8, {tx});
+    Block block = mine_block(1, node_a.blocks().latest().hash_, 1700000000, kDifficulty, {tx});
     ASSERT_TRUE(source.send(MessageType::BLOCK, block.serialize()));
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -467,8 +470,7 @@ TEST(Propagation, LedgerReflectsWinningBranchNotLosingBranchAfterReorg) {
     node_b.ledger().set_balance(alice.address, 1000);
 
     Transaction txToBob = make_signed_tx(alice, "bob-address", 300);
-    constexpr uint32_t kWeakDifficulty = 6;
-    Block weakBlock = mine_block(1, genesisHash, 1700000000, kWeakDifficulty, {txToBob});
+    Block weakBlock = mine_block(1, genesisHash, 1700000000, kDifficulty, {txToBob});
     ASSERT_TRUE(source.send(MessageType::BLOCK, weakBlock.serialize()));
     ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().has_block(weakBlock.hash_); }, std::chrono::seconds(2)));
     ASSERT_TRUE(WaitUntil([&] {
@@ -477,13 +479,14 @@ TEST(Propagation, LedgerReflectsWinningBranchNotLosingBranchAfterReorg) {
     }, std::chrono::seconds(2))) << "Node A's ledger did not reflect the losing branch's tx before reorg";
 
     Transaction txToCarol = make_signed_tx(alice, "carol-address", 500);
-    constexpr uint32_t kHeavyDifficulty = 12;
-    Block heavyBlock = mine_block(1, genesisHash, 1700000001, kHeavyDifficulty, {txToCarol});
-    ASSERT_NE(heavyBlock.hash_, weakBlock.hash_);
+    Block heavy1 = mine_block(1, genesisHash, 1700000001, kDifficulty, {txToCarol});
+    Block heavyBlock = mine_block(1, heavy1.hash_, 1700000002, kDifficulty, {});
+    ASSERT_NE(heavy1.hash_, weakBlock.hash_);
+    ASSERT_TRUE(source.send(MessageType::BLOCK, heavy1.serialize()));
     ASSERT_TRUE(source.send(MessageType::BLOCK, heavyBlock.serialize()));
 
     ASSERT_TRUE(WaitUntil([&] { return node_a.blocks().latest().hash_ == heavyBlock.hash_; }, std::chrono::seconds(2)))
-        << "Node A never reorganized onto the heavier fork";
+        << "Node A never reorganized onto the longer fork";
 
     Ledger groundTruth;
     groundTruth.set_balance(alice.address, 1000);

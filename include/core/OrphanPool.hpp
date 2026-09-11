@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 namespace forgechain::core {
 class OrphanPool {
 public:
@@ -17,6 +18,8 @@ public:
   void remove_orphan(const crypto::HashBytes &hash);
 
   [[nodiscard]] size_t orphan_count() const;
+  [[nodiscard]] std::vector<Block>
+  children_of(const crypto::HashBytes &hash) const;
 
 private:
   std::unordered_map<crypto::HashBytes, Block, crypto::HashBytesHasher>

@@ -1,10 +1,13 @@
 #include "consensus/ProofOfWork.hpp"
+#include "consensus/ConsensusParams.hpp"
 #include "core/Block.hpp"
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -117,4 +120,53 @@ bool validate_coinbase_amount(const std::vector<core::Transaction> &txs) {
   return txs[index].amount_ <= mining_reward + fees_total;
 }
 
+uint32_t
+next_difficulty(size_t height, const ConsensusParams &params,
+                const std::function<const core::Block &(size_t)> &block_at) {
+  const size_t interval = params.retarget_interval;
+  if (interval < 2 || height <= interval)
+    return params.initial_difficulty;
+  const core::Block &parent = block_at(height - 1);
+  if (height % interval != 0)
+    return parent.difficulty_;
+
+  uint64_t first = block_at(height - interval).timestamp_;
+  uint64_t last = parent.timestamp_;
+  uint64_t actual = last > first ? last - first : 0;
+  uint64_t expected = (interval - 1) * params.target_block_time;
+  return std::max(retarget(parent.difficulty_, actual, expected),
+                  params.min_difficulty);
+}
+
+uint64_t
+median_time_past(size_t height, size_t window,
+                 const std::function<const core::Block &(size_t)> &block_at) {
+  if (height == 0 || window == 0)
+    return 0;
+  size_t start = height > window ? height - window : 0;
+  std::vector<uint64_t> timestamps;
+  timestamps.reserve(height - start);
+  for (size_t i = start; i < height; i++) {
+    timestamps.push_back(block_at(i).timestamp_);
+  }
+
+  std::sort(timestamps.begin(), timestamps.end(),
+            [](uint64_t t1, uint64_t t2) { return t1 < t2; });
+
+  return timestamps[timestamps.size() / 2];
+}
+bool timestamp_is_valid(
+    const core::Block &block, size_t height, uint64_t now,
+    const ConsensusParams &params,
+    const std::function<const core::Block &(size_t)> &block_at) {
+  uint64_t timestamp = block.timestamp_;
+
+  if (timestamp > now && timestamp - now > params.max_future_drift)
+    return false;
+
+  if (timestamp <= median_time_past(height, params.mtp_window, block_at))
+    return false;
+
+  return true;
+}
 } // namespace forgechain::consensus

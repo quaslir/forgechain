@@ -12,7 +12,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <ctime>
 #include <iostream>
 #include <mutex>
 #include <optional>
@@ -28,7 +27,7 @@ Orchestrator::Orchestrator(OrchestratorConfig config)
       storage_(config_.db_path.empty() ? std::nullopt
                                        : std::optional<storage::Storage>(
                                              std::in_place, config_.db_path)),
-      chain_manager_(config_.kMaxPending,
+      chain_manager_(config_.kMaxPending, config_.consensus,
                      storage_.has_value() ? &*storage_ : nullptr),
       node_(config_.listen_port,
             network::VersionInfo{.protocol_version = 1,
@@ -62,7 +61,7 @@ bool Orchestrator::start() {
   if (!node_.start())
     return false;
   running_.store(true);
-  if (config_.mine_every_seconds > 0) {
+  if (config_.mine) {
     mining_thread_ = std::thread(&Orchestrator::mining_loop, this);
   }
   if (config_.rpc_port > 0) {
@@ -92,39 +91,31 @@ bool Orchestrator::start() {
 }
 void Orchestrator::mining_loop() {
   while (running_.load()) {
-    std::this_thread::sleep_for(
-        std::chrono::seconds(config_.mine_every_seconds));
-    if (!running_.load())
-      break;
 
-    std::lock_guard<std::mutex> state_lock(state_mutex_);
-    size_t prev_height = chain_manager_.chain_height();
-    crypto::HashBytes prev_hash = chain_manager_.latest_hash();
-    auto txs_for_block =
-        chain_manager_.transactions_for_block(config_.kMaxTxsPerBlock);
+    std::unique_lock<std::mutex> state_lock(state_mutex_);
+    auto tmpl = chain_manager_.block_template(config_.kMaxTxsPerBlock);
 
     if (!config_.reward_address.empty()) {
       uint64_t fees_total = 0;
-      for (const auto &tx : txs_for_block) {
+      for (const auto &tx : tmpl.transactions) {
         fees_total += tx.fee_;
       }
       core::Transaction coinbase{core::kCoinbaseSender, config_.reward_address,
                                  consensus::mining_reward + fees_total,
                                  crypto::bytes{}, 0};
-      txs_for_block.insert(txs_for_block.begin(), coinbase);
+      tmpl.transactions.insert(tmpl.transactions.begin(), coinbase);
     }
-
+    state_lock.unlock();
     core::Block mined = consensus::mine_block(
-        1, prev_hash, static_cast<uint64_t>(std::time(nullptr)),
-        config_.mine_difficulty, txs_for_block);
+        1, tmpl.prev_hash, tmpl.timestamp, tmpl.difficulty, tmpl.transactions);
     node_.submit_block(mined);
 
-    if (chain_manager_.chain_height() == prev_height) {
-      log_.log("MINE", "block REJECTED (height unchanged at " +
-                           std::to_string(prev_height) + ")");
+    if (chain_manager_.has_block(mined.hash_)) {
+      log_.log("MINE",
+               "block ACCEPTED, height now " + std::to_string(tmpl.height + 1));
     } else {
-      log_.log("MINE", "block ACCEPTED, height now " +
-                           std::to_string(chain_manager_.chain_height()));
+      log_.log("MINE", "block REJECTED (stale or invalid)");
+      std::this_thread::sleep_for(std::chrono::seconds(1));
     }
   }
 }
@@ -244,10 +235,8 @@ void Orchestrator::handle_status_command() {
     std::cout << "rpc: disabled" << std::endl;
   }
 
-  if (config_.mine_every_seconds > 0) {
-    std::cout << "mining: active, every " << config_.mine_every_seconds << "s"
-              << std::endl;
-
+  if (config_.mine) {
+    std::cout << "mining: active" << std::endl;
     if (!config_.reward_address.empty()) {
       std::cout << "reward address: " << config_.reward_address << std::endl;
     } else {
@@ -257,6 +246,9 @@ void Orchestrator::handle_status_command() {
   } else {
     std::cout << "mining: disabled" << std::endl;
   }
+
+  std::cout << "difficulty: " << chain_manager_.next_block_difficulty()
+            << " bits (next block)" << std::endl;
 }
 
 void Orchestrator::handle_set_reward_address(const crypto::str &address) {
@@ -279,13 +271,16 @@ void Orchestrator::handle_help_command() {
   std::cout
       << "  mempool                   show pending transactions in mempool"
       << std::endl;
+  std::cout
+      << "  ledger                    list known addresses and their balances"
+      << std::endl;
   std::cout << "  status                    show node configuration"
             << std::endl;
   std::cout << "  set reward-address <addr> change mining reward address"
             << std::endl;
   std::cout << "  set secret-key <value>    set/change the RPC auth token"
             << std::endl;
-  std::cout << "  ledger                  list known addresses and their balances";
+
   std::cout << "  connect <host> <port>     connect to a peer" << std::endl;
   std::cout << "  help                      show this message" << std::endl;
   std::cout << "  quit / exit               shut down the node" << std::endl;

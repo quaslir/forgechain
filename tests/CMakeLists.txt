@@ -45,7 +45,9 @@ add_forgechain_test_executable(core_tests
 add_forgechain_test_executable(consensus_tests
     consensus/ProofOfWorkTest.cpp
     consensus/RetargetTest.cpp
+    consensus/NextDifficultyTest.cpp
     consensus/CoinbaseValidationTest.cpp
+    consensus/TimestampTest.cpp
 )
 
 add_forgechain_test_executable(integration_tests
@@ -79,6 +81,10 @@ storage/StorageTest.cpp
 
 add_forgechain_test_executable(chain_tests
     chain/ChainManagerPersistenceTest.cpp
+    chain/ChainManagerTimestampTest.cpp
+    chain/ChainManagerForkOrderTest.cpp
+    chain/ChainManagerForkValidationTest.cpp
+    chain/ChainManagerBlockTemplateTest.cpp
 )
 
 

@@ -2,6 +2,7 @@
 #include "app/DemoLog.hpp"
 #include "app/RpcServer.hpp"
 #include "chain/ChainManager.hpp"
+#include "consensus/ConsensusParams.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "network/Node.hpp"
 #include "network/PeerAddress.hpp"
@@ -23,9 +24,8 @@ struct OrchestratorConfig {
   };
   uint16_t listen_port{8000};
   std::vector<network::PeerAddress> addresses;
-  // 0 disables mining entirely (pure listener node).
-  int mine_every_seconds = 0;
-  static constexpr uint32_t mine_difficulty = 15;
+  bool mine = false;
+  consensus::ConsensusParams consensus = consensus::kMainParams;
   static constexpr size_t kMaxTxsPerBlock = 50;
   static constexpr size_t kMaxPending = 1000;
   uint16_t rpc_port{0};

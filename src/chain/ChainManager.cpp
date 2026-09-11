@@ -1,4 +1,5 @@
 #include "chain/ChainManager.hpp"
+#include "consensus/ConsensusParams.hpp"
 #include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
@@ -8,19 +9,36 @@
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "storage/Storage.hpp"
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <ctime>
+#include <functional>
 #include <mutex>
 #include <optional>
+#include <stack>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 namespace forgechain::chain {
-ChainManager::ChainManager(size_t mempool_max_size, storage::Storage *storage)
-    : mempool_(mempool_max_size), storage_(storage) {
+ChainManager::ChainManager(size_t mempool_max_size,
+                           consensus::ConsensusParams params,
+                           storage::Storage *storage, Clock clock)
+    : mempool_(mempool_max_size), storage_(storage), params_(params),
+      clock_(std::move(clock)) {
+
+  if (!clock_) {
+    clock_ = []() -> uint64_t {
+      return static_cast<uint64_t>(std::time(nullptr));
+    };
+  }
   if (storage_ && storage_->block_count() == 0) {
     storage_->save_block(blockchain_[0], 0);
   }
+
+  block_at_callback_ = [this](size_t index) -> const core::Block & {
+    return blockchain_.at(index);
+  };
 }
 
 BlockOutcome ChainManager::submit_block(const core::Block &block) {
@@ -30,10 +48,22 @@ BlockOutcome ChainManager::submit_block(const core::Block &block) {
   if (!consensus::validate_coinbase_amount(block.transactions_))
     return outcome;
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+
   core::BlockValidation block_status = blockchain_.classify_new_block(block);
 
   switch (block_status) {
-  case core::BlockValidation::Valid:
+  case core::BlockValidation::Valid: {
+    if (!consensus::timestamp_is_valid(block, blockchain_.size(), clock_(),
+                                       params_, block_at_callback_)) {
+      return outcome;
+    }
+
+    uint32_t expected_difficulty = consensus::next_difficulty(
+        blockchain_.size(), params_, block_at_callback_);
+    if (block.difficulty_ != expected_difficulty) {
+      return outcome;
+    }
+
     if (apply_block_to_ledger(block)) {
       for (const auto &tx : block.transactions_) {
         mempool_.remove_transaction(tx);
@@ -49,6 +79,7 @@ BlockOutcome ChainManager::submit_block(const core::Block &block) {
       }
     }
     break;
+  }
   case core::BlockValidation::ForkCandidate:
     return handle_fork_candidate(block);
   case core::BlockValidation::Invalid:
@@ -98,7 +129,8 @@ ChainManager::find_block(const crypto::HashBytes &hash) const {
   auto block_in_orphan = orphan_pool_.find_orphan(hash);
   return block_in_orphan;
 }
-std::vector<core::Block> ChainManager::blocks_from(size_t from, size_t limit) const {
+std::vector<core::Block> ChainManager::blocks_from(size_t from,
+                                                   size_t limit) const {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
   if (from >= blockchain_.size())
     return {};
@@ -125,7 +157,11 @@ ChainManager::find_transaction(const crypto::HashBytes &hash) const {
 std::vector<core::Transaction>
 ChainManager::transactions_for_block(size_t limit) const {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  return select_transactions(limit);
+}
 
+std::vector<core::Transaction>
+ChainManager::select_transactions(size_t limit) const {
   auto candidates = mempool_.get_transactions_for_block(limit);
 
   core::Ledger simulated{ledger_};
@@ -138,6 +174,7 @@ ChainManager::transactions_for_block(size_t limit) const {
   }
   return valid;
 }
+
 std::vector<core::Transaction> ChainManager::mempool_snapshot() const {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
   return mempool_.get_transactions_for_block(mempool_.size());
@@ -158,7 +195,11 @@ ChainManager::all_balances() const {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
   return ledger_.all_balances();
 }
-
+uint32_t ChainManager::next_block_difficulty() const {
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  return consensus::next_difficulty(blockchain_.size(), params_,
+                                    block_at_callback_);
+}
 bool ChainManager::apply_block_to_ledger(const core::Block &block) {
   const auto &transactions = block.transactions_;
 
@@ -184,11 +225,37 @@ BlockOutcome ChainManager::handle_fork_candidate(const core::Block &block) {
     outcome.status = BlockOutcome::Status::NeedParent;
     outcome.missing_parent = block.prev_hash_;
   } else {
-    auto reorg_hashes = try_reorg(std::move(*fork_chain));
+    auto now = clock_();
+    auto tips = find_fork_tips(block);
+    std::optional<core::ForkChain> best;
+    uint64_t best_work = 0;
+
+    for (const auto &tip : tips) {
+      auto result = core::build_fork_chain(blockchain_, orphan_pool_, tip);
+      if (result == std::nullopt)
+        continue;
+      if (!fork_is_valid(*result, now))
+        continue;
+      uint64_t work = core::fork_work(*result);
+
+      if (!best.has_value() || work > best_work) {
+        best = std::move(*result);
+        best_work = work;
+      }
+    }
+
+    if (!best.has_value())
+      return outcome;
+
+    auto reorg_hashes = try_reorg(std::move(*best));
 
     if (reorg_hashes.has_value()) {
       outcome.status = BlockOutcome::Status::Reorged;
       outcome.to_broadcast = std::move(*reorg_hashes);
+
+      for (const auto &hash : outcome.to_broadcast) {
+        orphan_pool_.remove_orphan(hash);
+      }
     }
   }
 
@@ -250,5 +317,72 @@ ChainManager::try_reorg(core::ForkChain &&fork_chain) {
     storage_->replace_blocks_from(fork_point, new_branch);
   }
   return new_hashes;
+}
+
+std::vector<core::Block>
+ChainManager::find_fork_tips(const core::Block &start) const {
+  std::stack<core::Block> stack;
+  std::vector<core::Block> tips;
+  size_t visited = 0;
+  stack.push(start);
+
+  while (!stack.empty() && visited < core::kMaxForkDepth) {
+    core::Block block = std::move(stack.top());
+    stack.pop();
+    visited++;
+    auto result = orphan_pool_.children_of(block.hash_);
+    if (result.empty())
+      tips.push_back(std::move(block));
+    else {
+      for (auto &&child : result) {
+        stack.push(std::move(child));
+      }
+    }
+  }
+
+  while (!stack.empty()) {
+    tips.push_back(std::move(stack.top()));
+    stack.pop();
+  }
+  return tips;
+}
+bool ChainManager::fork_is_valid(const core::ForkChain &fork,
+                                 uint64_t now) const {
+  auto height = blockchain_.find_height(fork.common_ancestor.hash_);
+  if (!height.has_value())
+    return false;
+  size_t base = *height + 1;
+  auto fork_block_at = [&](size_t index) -> const core::Block & {
+    return base > index ? blockchain_.at(index) : fork.blocks.at(index - base);
+  };
+
+  for (size_t i = 0; i < fork.blocks.size(); i++) {
+    const auto &block = fork.blocks[i];
+    if (!consensus::timestamp_is_valid(block, base + i, now, params_,
+                                       fork_block_at))
+      return false;
+    if (block.difficulty_ !=
+        consensus::next_difficulty(base + i, params_, fork_block_at))
+      return false;
+  }
+
+  return true;
+}
+
+BlockTemplate ChainManager::block_template(size_t max_txs) const {
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  BlockTemplate tmpl;
+  tmpl.prev_hash = blockchain_.latest().hash_;
+  tmpl.height = blockchain_.size();
+  tmpl.difficulty =
+      consensus::next_difficulty(tmpl.height, params_, block_at_callback_);
+  tmpl.timestamp = std::max(
+      clock_(), consensus::median_time_past(tmpl.height, params_.mtp_window,
+                                            block_at_callback_) +
+                    1);
+
+  tmpl.transactions = select_transactions(max_txs);
+
+  return tmpl;
 }
 } // namespace forgechain::chain

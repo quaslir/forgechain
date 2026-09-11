@@ -13,7 +13,7 @@ plain-text RPC protocol that connects them.
 | `--port` | `-p` | `<PORT>` | `8000` | P2P listen port. The node accepts inbound peer connections here. |
 | `--connect` | `-c` | `<HOST> <PORT>` | none | Add a bootstrap peer. Repeatable -- pass `--connect` multiple times to seed several peers. Addresses go into the node's address book at startup and are dialed by the connection loop, so a peer that is temporarily unreachable is retried with exponential backoff rather than given up on. A peer that never answers is never fatal; the node still starts and listens. |
 | `--bootstrap-file` | `-b` | `<PATH>` | none | Load additional peer addresses from a file (one `host:port` per line), in addition to any `--connect` flags. If the file doesn't exist or contains no valid entries, this is a warning, not a crash. |
-| `--mine-every` | `-m` | `<SECONDS>` | `0` (disabled) | Enable mining: attempt to mine a block every `N` seconds. Omit or pass `0` for a pure listening/relay node that never mines. |
+| `--mine` | `-m` | none | off | Enable mining. The node mines continuously, one block after another, on its own thread; how often blocks actually appear is governed by the network's difficulty (see §5), not by the node. Omit for a pure listening/relay node that never mines. A mining node keeps one CPU core fully busy. |
 | `--reward-address` | `-r` | `<ADDRESS>` | none | Address that receives the coinbase mining reward for every block this node mines. If unset, mined blocks contain no coinbase transaction. The node never holds a private key for this address -- generate one separately with `wallet` and pass its printed address here. |
 | `--rpc-port` | `-R` | `<PORT>` | `0` (disabled) | Enable the RPC query server on this port (see §3). Separate from `--port`/the P2P port -- a client connecting here is never treated as a P2P peer. |
 | `--rpc-api-key` | `-K` | `<VALUE>` | none | Require this value as the first token on every RPC command (see §3). If unset, the RPC server is unauthenticated -- anyone who can reach the RPC port can issue any command. Can also be set/changed after startup via the interactive `set secret-key <value>` command, without restarting the node. |
@@ -23,7 +23,9 @@ plain-text RPC protocol that connects them.
 
 `Ctrl+C` (SIGINT) triggers a graceful shutdown: mining and RPC threads are
 stopped and joined, and all peer connections are closed before the process
-exits. There is no save step on shutdown -- with `--db-path`, the database is
+exits. A mining node finishes the block it is currently working on before
+its mining thread stops, so at high difficulty shutdown can take up to
+roughly one block interval. There is no save step on shutdown -- with `--db-path`, the database is
 already up to date with every accepted block, so a clean stop and an unclean
 one (a crash, `kill -9`) leave the same data on disk.
 
@@ -40,7 +42,7 @@ independent of mining/networking:
 | `peers` | List currently connected P2P peers, one per line, as `host:port` followed by direction: `(out)` for a connection this node dialed, `(in)` for one it accepted. Prints `(no peers connected)` if there are none. |
 | `addrbook` | List every peer address this node knows, whether or not it is currently connected. Each entry shows `host:port` and its state: `verified` -- a successful outbound dial has confirmed the address is reachable, so it may be gossiped to other peers -- or `unverified (N fails)`, meaning the address is known but not yet confirmed, with its failed-dial count. Prints `(address book is empty)` if there are none. |
 | `mempool` | List pending transactions in the mempool, each with sender, recipient, amount, and fee. Prints `(mempool is empty)` if there are none. |
-| `status` | Print node configuration: P2P port, RPC state, mining interval, and reward address. |
+| `status` | Print node configuration and state: P2P port, RPC state, whether mining is on, the reward address, and the difficulty (in bits) that consensus requires for the next block. The difficulty line is shown on every node, mining or not -- it is a property of the chain, not of the miner. |
 | `connect <host> <port>` | Dial a peer immediately, without waiting for the connection loop. Returns within a few seconds even if the host is unreachable or silently drops packets. |
 | `set reward-address <address>` | Set or change the address that receives the coinbase reward for blocks this node mines. |
 | `set secret-key <value>` | Set or change the RPC auth token at runtime, without restarting the node. Takes effect immediately for all subsequent RPC commands; the previous token (if any) stops working right away. Errors if RPC isn't enabled (`--rpc-port` wasn't given). |
@@ -212,11 +214,57 @@ mined are gone after a restart.
 Two nodes should never be pointed at the same `--db-path` file
 simultaneously; each node's database is private to that single process.
 
-## 5. Example: two nodes and a wallet
+A database is only valid under the consensus rules it was built with.
+Databases created before difficulty adjustment (§5) was introduced hold
+blocks whose difficulty and timestamps the current rules do not require
+of them; the node still loads such a file, but peers running the current
+version will reject its chain. Delete old database files when upgrading
+across that change.
+
+## 5. Difficulty adjustment
+
+Difficulty is not configured on the node. Consensus derives the difficulty
+every block must carry from the chain itself, and every node enforces it:
+a block with any other difficulty is rejected, whether it extends the tip
+or arrives as part of a competing branch. The exact rules are in
+`protocol.md` §8; this section describes what an operator sees.
+
+Difficulty is recalculated once every 20 blocks, aiming for one block
+every 10 seconds across the whole network. If the previous 20 blocks came
+in faster than that, difficulty goes up; slower, it goes down. A single
+adjustment moves by at most 2 bits (a factor of 4 in expected work), so
+reaching equilibrium from a far-off starting point takes several rounds.
+
+What this looks like in practice:
+
+- **A fresh network starts fast.** The first blocks are mined at the
+  initial difficulty, which on typical hardware takes milliseconds.
+  Difficulty then climbs by 2 bits per round until block times approach
+  10 seconds, and settles there. Watch the `difficulty` line in `status`
+  and `height` to follow it.
+- **More miners, same block rate.** Adding a mining node makes blocks come
+  faster for a while; the next adjustment raises difficulty to compensate.
+  Removing miners does the reverse.
+- **All nodes agree.** Difficulty is a function of the chain, so nodes on
+  the same chain always report the same `difficulty` in `status`. Two
+  nodes showing different values at the same height are on different
+  branches.
+- **Difficulty moves in whole bits.** If the network's real hash rate sits
+  between two bit values, difficulty can alternate between them from one
+  round to the next. Average block time still stays close to the target.
+
+Block timestamps are also checked: a block must be later than the median
+of the previous 11 blocks, and no more than 2 minutes ahead of the
+receiving node's clock. A node whose system clock is badly off will see
+its peers' fresh blocks rejected (clock behind) or have its own mined
+blocks rejected by peers (clock ahead). Keep node clocks synchronized
+(NTP) -- a few seconds of skew is harmless, minutes is not.
+
+## 6. Example: two nodes and a wallet
 
 ```
-# Node A: listens on 8000, RPC on 8090, mines every 20s, pays itself
-./forgechain --port 8000 --rpc-port 8090 --mine-every 20 \
+# Node A: listens on 8000, RPC on 8090, mines, pays itself
+./forgechain --port 8000 --rpc-port 8090 --mine \
   --reward-address <address-from-wallet-below>
 
 # Node B: connects to A, no mining, RPC on 8091
@@ -269,7 +317,7 @@ sent
 
 ```
 # Node A, started with a token baked in from the start
-./forgechain --port 8000 --rpc-port 8090 --mine-every 20 \
+./forgechain --port 8000 --rpc-port 8090 --mine \
   --reward-address <address> --rpc-api-key mysecret123
 
 # Wallet, given the same token up front
@@ -290,8 +338,8 @@ RPC API key set
 ### Example: with persistent storage
 
 ```
-# First run: mines a few blocks.
-./forgechain --port 8000 --mine-every 5 --db-path node.db --reward-address <address>
+# First run: mines for a while.
+./forgechain --port 8000 --mine --db-path node.db --reward-address <address>
 >>> height
 3
 
@@ -299,8 +347,9 @@ RPC API key set
 kill -9 <pid>
 
 # Second run, same --db-path: chain height and balances pick up where they
-# left off.
-./forgechain --port 8000 --mine-every 5 --db-path node.db --reward-address <address>
+# left off, and mining continues from there. (Run without --mine to see
+# the restored height hold still.)
+./forgechain --port 8000 --db-path node.db
 >>> height
 3
 ```
@@ -317,3 +366,29 @@ kill -9 <pid>
 # B catches up on connect. If A was more than 2000 blocks ahead, B keeps
 # pulling the rest in rounds; `height` on B climbs until it matches A.
 ```
+
+### Example: watching difficulty adjust
+
+```
+# A fresh three-node network, every node mining.
+./forgechain --port 8000 --mine
+./forgechain --port 8001 --connect 127.0.0.1 8000 --mine
+./forgechain --port 8002 --connect 127.0.0.1 8000 --mine
+
+# Right after start, blocks come in milliseconds apart:
+>>> status
+port: 8000
+rpc: disabled
+mining: active
+reward address: none (mined blocks have no coinbase)
+difficulty: 15 bits (next block)
+
+# A few adjustment rounds later difficulty has climbed and block times
+# are near 10 seconds. Every node reports the same value:
+>>> status
+...
+difficulty: 23 bits (next block)
+```
+
+The exact equilibrium depends on the combined hash rate of the mining
+nodes; 23 bits is only an illustration.

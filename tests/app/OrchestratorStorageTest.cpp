@@ -59,13 +59,12 @@ Transaction make_signed_tx(const Wallet &sender, const str &recipient,
   return tx;
 }
 
-void mine_blocks_locally(Orchestrator &orch, int count,
-                          uint32_t difficulty = 1) {
+void mine_blocks_locally(Orchestrator &orch, int count) {
   for (int i = 0; i < count; ++i) {
     HashBytes prev_hash = orch.chain_manager_.latest_hash();
     Block mined = mine_block(1, prev_hash,
-                             static_cast<uint64_t>(1700000000 + i), difficulty,
-                             {});
+                             static_cast<uint64_t>(1700000000 + i),
+                             orch.chain_manager_.next_block_difficulty(), {});
     orch.node_.submit_block(mined);
   }
 }
@@ -86,6 +85,7 @@ private:
 
 TEST(Orchestrator, WithoutDbPathStorageIsNotEngaged) {
   OrchestratorConfig config;
+  config.consensus = forgechain::consensus::kTestParams;
   config.listen_port = next_test_port();
   config.db_path = "";
 
@@ -99,6 +99,7 @@ TEST(Orchestrator, WithoutDbPathStopDoesNotCreateAFile) {
 
   {
     OrchestratorConfig config;
+  config.consensus = forgechain::consensus::kTestParams;
     config.listen_port = next_test_port();
     config.db_path = "";
     Orchestrator orch(config);
@@ -112,6 +113,7 @@ TEST(Orchestrator, WithoutDbPathStopDoesNotCreateAFile) {
 TEST(Orchestrator, WithDbPathStorageIsEngaged) {
   TempDbPath db;
   OrchestratorConfig config;
+  config.consensus = forgechain::consensus::kTestParams;
   config.listen_port = next_test_port();
   config.db_path = db.path();
 
@@ -122,6 +124,7 @@ TEST(Orchestrator, WithDbPathStorageIsEngaged) {
 TEST(Orchestrator, FreshDbPathStartsWithOnlyGenesisAndNoStoredBalances) {
   TempDbPath db;
   OrchestratorConfig config;
+  config.consensus = forgechain::consensus::kTestParams;
   config.listen_port = next_test_port();
   config.db_path = db.path();
 
@@ -132,6 +135,7 @@ TEST(Orchestrator, FreshDbPathStartsWithOnlyGenesisAndNoStoredBalances) {
 TEST(Orchestrator, StopPersistsAllMinedBlocksToStorage) {
   TempDbPath db;
   OrchestratorConfig config;
+  config.consensus = forgechain::consensus::kTestParams;
   config.listen_port = next_test_port();
   config.db_path = db.path();
 
@@ -148,6 +152,7 @@ TEST(Orchestrator, StopPersistsAllMinedBlocksToStorage) {
 TEST(Orchestrator, ChainHeightSurvivesDestructionAndReconstruction) {
   TempDbPath db;
   OrchestratorConfig config;
+  config.consensus = forgechain::consensus::kTestParams;
   config.listen_port = next_test_port();
   config.db_path = db.path();
 
@@ -167,6 +172,7 @@ TEST(Orchestrator, ChainHeightSurvivesDestructionAndReconstruction) {
 TEST(Orchestrator, RestoredBlocksMatchOriginalHashesInOrder) {
   TempDbPath db;
   OrchestratorConfig config;
+  config.consensus = forgechain::consensus::kTestParams;
   config.listen_port = next_test_port();
   config.db_path = db.path();
 
@@ -194,6 +200,7 @@ TEST(Orchestrator, RestoredBlocksMatchOriginalHashesInOrder) {
 TEST(Orchestrator, BalancesSurviveDestructionAndReconstruction) {
   TempDbPath db;
   OrchestratorConfig config;
+  config.consensus = forgechain::consensus::kTestParams;
   config.listen_port = next_test_port();
   config.db_path = db.path();
 
@@ -206,7 +213,8 @@ TEST(Orchestrator, BalancesSurviveDestructionAndReconstruction) {
       for (int i = 0; i < 6; i++) {
         Transaction coinbase{kCoinbaseSender, alice.address, 50, bytes{}, 0};
         Block funding = mine_block(1, orch.chain_manager_.latest_hash(),
-                                   static_cast<uint64_t>(1700000000 + i), 1,
+                                   static_cast<uint64_t>(1700000000 + i),
+                                   orch.chain_manager_.next_block_difficulty(),
                                    {coinbase});
         orch.node_.submit_block(funding);
       }
@@ -215,7 +223,8 @@ TEST(Orchestrator, BalancesSurviveDestructionAndReconstruction) {
 
       Transaction tx = make_signed_tx(alice, bob.address, 100, 5);
       Block mined = mine_block(1, orch.chain_manager_.latest_hash(),
-                               1700000100, 1, {tx});
+                               1700000100,
+                               orch.chain_manager_.next_block_difficulty(), {tx});
       orch.node_.submit_block(mined);
 
       ASSERT_EQ(orch.chain_manager_.get_balance(alice.address),
@@ -236,6 +245,7 @@ TEST(Orchestrator, BalancesSurviveDestructionAndReconstruction) {
 TEST(Orchestrator, MultipleStopCallsDoNotCorruptStorage) {
   TempDbPath db;
   OrchestratorConfig config;
+  config.consensus = forgechain::consensus::kTestParams;
   config.listen_port = next_test_port();
   config.db_path = db.path();
 
@@ -251,6 +261,7 @@ TEST(Orchestrator, MultipleStopCallsDoNotCorruptStorage) {
 TEST(Orchestrator, ReconstructingAfterMultipleStopCallsStillRestoresCorrectly) {
   TempDbPath db;
   OrchestratorConfig config;
+  config.consensus = forgechain::consensus::kTestParams;
   config.listen_port = next_test_port();
   config.db_path = db.path();
 
@@ -268,6 +279,7 @@ TEST(Orchestrator, ReconstructingAfterMultipleStopCallsStillRestoresCorrectly) {
 TEST(Orchestrator, CorruptedStorageWithAGapInHeightsThrowsOnConstruction) {
   TempDbPath db;
   OrchestratorConfig config;
+  config.consensus = forgechain::consensus::kTestParams;
   config.listen_port = next_test_port();
   config.db_path = db.path();
 

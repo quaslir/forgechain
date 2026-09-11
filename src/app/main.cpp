@@ -60,16 +60,9 @@ void parse_args(std::span<char *> argv,
       address.port = static_cast<uint16_t>(*connect_port);
       config.addresses.push_back(std::move(address));
       i += 2;
-    } else if (((view == "--mine-every") || view == "-m") &&
-               i + 1 < argv.size()) {
-      ++i;
-      std::string_view seconds_view{argv[i]};
-      auto mine_every = forgechain::app::parse_number(seconds_view);
-      if (!mine_every.has_value()) {
-        throw std::invalid_argument("invalid mine-every number");
-      }
+    } else if (((view == "--mine") || view == "-m")) {
 
-      config.mine_every_seconds = *mine_every;
+      config.mine = true;
     }
 
     else if (((view == "--bootstrap-file") || view == "-b") &&
