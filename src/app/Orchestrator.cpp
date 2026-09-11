@@ -28,7 +28,7 @@ Orchestrator::Orchestrator(OrchestratorConfig config)
       storage_(config_.db_path.empty() ? std::nullopt
                                        : std::optional<storage::Storage>(
                                              std::in_place, config_.db_path)),
-      chain_manager_(config_.kMaxPending,
+      chain_manager_(config_.kMaxPending, config_.consensus,
                      storage_.has_value() ? &*storage_ : nullptr),
       node_(config_.listen_port,
             network::VersionInfo{.protocol_version = 1,
@@ -100,6 +100,7 @@ void Orchestrator::mining_loop() {
     std::lock_guard<std::mutex> state_lock(state_mutex_);
     size_t prev_height = chain_manager_.chain_height();
     crypto::HashBytes prev_hash = chain_manager_.latest_hash();
+    auto next_difficulty = chain_manager_.next_block_difficulty();
     auto txs_for_block =
         chain_manager_.transactions_for_block(config_.kMaxTxsPerBlock);
 
@@ -116,7 +117,7 @@ void Orchestrator::mining_loop() {
 
     core::Block mined = consensus::mine_block(
         1, prev_hash, static_cast<uint64_t>(std::time(nullptr)),
-        config_.mine_difficulty, txs_for_block);
+        next_difficulty, txs_for_block);
     node_.submit_block(mined);
 
     if (chain_manager_.chain_height() == prev_height) {

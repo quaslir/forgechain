@@ -63,7 +63,7 @@ public:
   [[nodiscard]] core::Block block_at(size_t index) const;
   [[nodiscard]] std::vector<std::pair<crypto::str, uint64_t>>
   all_balances() const;
-
+  [[nodiscard]] uint32_t next_block_difficulty() const;
 private:
   [[nodiscard]] bool apply_block_to_ledger(const core::Block &block);
   BlockOutcome handle_fork_candidate(const core::Block &block);
@@ -79,5 +79,7 @@ private:
   Clock clock_;
   mutable std::mutex chain_mutex_;
   mutable std::mutex orphan_mutex_;
+
+  std::function<const core::Block&(size_t index)> block_at_callback_; // MUST be called with chain_mutex_!!!
 };
 } // namespace forgechain::chain

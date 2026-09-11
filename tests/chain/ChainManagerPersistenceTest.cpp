@@ -24,7 +24,8 @@ namespace {
 
 constexpr size_t kMempoolSize = 1000;
 
-constexpr uint32_t kLightDifficulty = 4;
+constexpr uint32_t kLightDifficulty =
+    forgechain::consensus::kTestParams.initial_difficulty;
 constexpr uint32_t kHeavyDifficulty = 8;
 
 std::string next_test_db_path() {
@@ -153,11 +154,11 @@ TEST(ChainPersistence, ReorgToLongerBranchWritesEveryNewBlock) {
 
   const HashBytes genesis_hash = manager.latest_hash();
 
-  Block losing = mine_on(genesis_hash, 1000, kHeavyDifficulty);
+  Block losing = mine_on(genesis_hash, 1000, kLightDifficulty);
   ASSERT_EQ(manager.submit_block(losing).status, BlockOutcome::Status::Accepted);
 
-  Block win1 = mine_on(genesis_hash, 2000, kHeavyDifficulty);
-  Block win2 = mine_on(win1.hash_, 2001, kHeavyDifficulty);
+  Block win1 = mine_on(genesis_hash, 2000, kLightDifficulty);
+  Block win2 = mine_on(win1.hash_, 2001, kLightDifficulty);
 
   manager.submit_block(win1);
   auto outcome = manager.submit_block(win2);

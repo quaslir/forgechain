@@ -12,11 +12,17 @@ struct ConsensusParams {
   uint64_t max_future_drift;
 };
 
-inline constexpr ConsensusParams kMainParams{
-    .initial_difficulty = 15, .min_difficulty = 8, .target_block_time = 10,
-    .retarget_interval = 20, .mtp_window = 11, .max_future_drift = 120};
+inline constexpr ConsensusParams kMainParams{.initial_difficulty = 15,
+                                             .min_difficulty = 8,
+                                             .target_block_time = 10,
+                                             .retarget_interval = 20,
+                                             .mtp_window = 11,
+                                             .max_future_drift = 120};
 
-inline constexpr ConsensusParams kTestParams{
-    .initial_difficulty = 4, .min_difficulty = 1, .target_block_time = 10,
-    .retarget_interval = 20, .mtp_window = 11, .max_future_drift = 120};
+inline constexpr ConsensusParams kTestParams{.initial_difficulty = 4,
+                                             .min_difficulty = 1,
+                                             .target_block_time = 10,
+                                             .retarget_interval = 20,
+                                             .mtp_window = 11,
+                                             .max_future_drift = 120};
 } // namespace forgechain::consensus

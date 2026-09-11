@@ -18,6 +18,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <algorithm>
 namespace forgechain::chain {
 ChainManager::ChainManager(size_t mempool_max_size,
                            consensus::ConsensusParams params,
@@ -33,6 +34,10 @@ ChainManager::ChainManager(size_t mempool_max_size,
   if (storage_ && storage_->block_count() == 0) {
     storage_->save_block(blockchain_[0], 0);
   }
+
+ block_at_callback_ = [this](size_t index) -> const core::Block & {
+    return blockchain_.at(index);
+  };
 }
 
 BlockOutcome ChainManager::submit_block(const core::Block &block) {
@@ -42,17 +47,22 @@ BlockOutcome ChainManager::submit_block(const core::Block &block) {
   if (!consensus::validate_coinbase_amount(block.transactions_))
     return outcome;
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+
   core::BlockValidation block_status = blockchain_.classify_new_block(block);
 
   switch (block_status) {
-  case core::BlockValidation::Valid:
-    if (!consensus::timestamp_is_valid(
-            block, blockchain_.size(), clock_(), params_,
-            [this](size_t index) -> const core::Block & {
-              return blockchain_.at(index);
-            })) {
+  case core::BlockValidation::Valid: {
+    if (!consensus::timestamp_is_valid(block, blockchain_.size(), clock_(),
+                                       params_, block_at_callback_)) {
       return outcome;
     }
+
+    uint32_t expected_difficulty = consensus::next_difficulty(
+        blockchain_.size(), params_, block_at_callback_);
+    if (block.difficulty_ != expected_difficulty) {
+      return outcome;
+    }
+
     if (apply_block_to_ledger(block)) {
       for (const auto &tx : block.transactions_) {
         mempool_.remove_transaction(tx);
@@ -68,6 +78,7 @@ BlockOutcome ChainManager::submit_block(const core::Block &block) {
       }
     }
     break;
+  }
   case core::BlockValidation::ForkCandidate:
     return handle_fork_candidate(block);
   case core::BlockValidation::Invalid:
@@ -178,7 +189,10 @@ ChainManager::all_balances() const {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
   return ledger_.all_balances();
 }
-
+uint32_t ChainManager::next_block_difficulty() const {
+std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+return consensus::next_difficulty(blockchain_.size(), params_, block_at_callback_);
+}
 bool ChainManager::apply_block_to_ledger(const core::Block &block) {
   const auto &transactions = block.transactions_;
 
