@@ -26,7 +26,9 @@ constexpr size_t kInterval = 20;
 const ConsensusParams kParams{.initial_difficulty = kInitial,
                               .min_difficulty = kMin,
                               .target_block_time = kTargetTime,
-                              .retarget_interval = kInterval};
+                              .retarget_interval = kInterval,
+                              .mtp_window = 11,
+                              .max_future_drift = 120};
 
 std::vector<Block> make_chain(size_t count, uint64_t spacing,
                               uint32_t difficulty = kInitial) {

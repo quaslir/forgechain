@@ -31,10 +31,9 @@ struct PeerEntry {
 };
 
 struct Sync {
-    std::chrono::steady_clock::time_point last_sync{
-        std::chrono::steady_clock::now()
-    };
-    size_t sync_cursor{0};
+  std::chrono::steady_clock::time_point last_sync{
+      std::chrono::steady_clock::now()};
+  size_t sync_cursor{0};
 };
 
 using VectorPeers = std::vector<PeerEntry>;

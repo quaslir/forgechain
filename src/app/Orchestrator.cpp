@@ -285,7 +285,8 @@ void Orchestrator::handle_help_command() {
             << std::endl;
   std::cout << "  set secret-key <value>    set/change the RPC auth token"
             << std::endl;
-  std::cout << "  ledger                  list known addresses and their balances";
+  std::cout
+      << "  ledger                  list known addresses and their balances";
   std::cout << "  connect <host> <port>     connect to a peer" << std::endl;
   std::cout << "  help                      show this message" << std::endl;
   std::cout << "  quit / exit               shut down the node" << std::endl;

@@ -108,7 +108,9 @@ void Node::cleaner_loop() {
       worker.join();
     }
 
-    if(!wait_or_stop(std::chrono::duration_cast<std::chrono::milliseconds>(CLEANER_TIMEOUT))) break;
+    if (!wait_or_stop(std::chrono::duration_cast<std::chrono::milliseconds>(
+            CLEANER_TIMEOUT)))
+      break;
   }
 }
 
@@ -131,16 +133,18 @@ void Node::ping_loop() {
       }
     }
     auto now = std::chrono::steady_clock::now();
-    if(now - sync_.last_sync >= SYNC_INTERVAL) {
-        request_sync();
-        sync_.last_sync = now;
+    if (now - sync_.last_sync >= SYNC_INTERVAL) {
+      request_sync();
+      sync_.last_sync = now;
     }
     if (now - last_gossip >= GOSSIP_INTERVAL) {
       gossip_peers();
       last_gossip = now;
     }
 
-    if(!wait_or_stop(std::chrono::duration_cast<std::chrono::milliseconds>(PING_INTERVAL))) break;
+    if (!wait_or_stop(std::chrono::duration_cast<std::chrono::milliseconds>(
+            PING_INTERVAL)))
+      break;
   }
 }
 
@@ -178,7 +182,9 @@ void Node::connect_loop() {
       }
     }
 
-    if(!wait_or_stop(std::chrono::duration_cast<std::chrono::milliseconds>(CONNECT_INTERVAL))) break;
+    if (!wait_or_stop(std::chrono::duration_cast<std::chrono::milliseconds>(
+            CONNECT_INTERVAL)))
+      break;
   }
 }
 
@@ -431,7 +437,8 @@ void Node::handle_getblocks(Peer *peer, const crypto::bytes &payload) {
   auto from_height_container = deserialize_getblocks(payload);
   if (!from_height_container.has_value())
     return;
-  auto blocks = chain_.blocks_from(static_cast<size_t>(*from_height_container), MAX_BLOCKS_PER_RESPONSE);
+  auto blocks = chain_.blocks_from(static_cast<size_t>(*from_height_container),
+                                   MAX_BLOCKS_PER_RESPONSE);
   for (const auto &block : blocks) {
     send_msg(peer, MessageType::BLOCK, block.serialize());
   }
@@ -526,33 +533,33 @@ void Node::send_peer_list(Peer *peer, const PeerAddress &peer_addr) {
   send_msg(peer, MessageType::PEERS, serialize_peer_list(gossip));
 }
 
-
 void Node::request_sync() {
-        std::vector<std::shared_ptr<Peer>> targets;
-        {
-            std::lock_guard<std::mutex> peers_lock(peers_mutex_);
+  std::vector<std::shared_ptr<Peer>> targets;
+  {
+    std::lock_guard<std::mutex> peers_lock(peers_mutex_);
 
+    for (const auto &entry : peers_) {
+      if (entry.peer->is_alive())
+        targets.push_back(entry.peer);
+    }
+  }
 
-            for(const auto& entry: peers_) {
-                if(entry.peer->is_alive()) targets.push_back(entry.peer);
-            }
-        }
+  if (targets.empty())
+    return;
 
-        if(targets.empty()) return;
-
-        auto target = targets[sync_.sync_cursor++ % targets.size()];
-        send_msg(target.get(), MessageType::GETBLOCKS, serialize_getblocks(chain_.chain_height()));
-
+  auto target = targets[sync_.sync_cursor++ % targets.size()];
+  send_msg(target.get(), MessageType::GETBLOCKS,
+           serialize_getblocks(chain_.chain_height()));
 }
 bool Node::wait_or_stop(std::chrono::milliseconds duration) {
-    std::unique_lock<std::mutex> lock(shutdown_mutex_);
-    return !shutdown_cv_.wait_for(lock, duration, [this] {return !running_;});
+  std::unique_lock<std::mutex> lock(shutdown_mutex_);
+  return !shutdown_cv_.wait_for(lock, duration, [this] { return !running_; });
 }
 void Node::stop() {
-{
+  {
     std::lock_guard<std::mutex> lock(shutdown_mutex_);
-      running_.store(false);
-}
+    running_.store(false);
+  }
   shutdown_cv_.notify_all();
   listener_.close_socket();
   std::vector<std::thread> workers_to_join;

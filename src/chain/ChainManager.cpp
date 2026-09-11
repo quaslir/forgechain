@@ -98,7 +98,8 @@ ChainManager::find_block(const crypto::HashBytes &hash) const {
   auto block_in_orphan = orphan_pool_.find_orphan(hash);
   return block_in_orphan;
 }
-std::vector<core::Block> ChainManager::blocks_from(size_t from, size_t limit) const {
+std::vector<core::Block> ChainManager::blocks_from(size_t from,
+                                                   size_t limit) const {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
   if (from >= blockchain_.size())
     return {};

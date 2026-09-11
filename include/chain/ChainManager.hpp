@@ -42,7 +42,8 @@ public:
   [[nodiscard]] bool has_block(const crypto::HashBytes &hash) const;
   [[nodiscard]] std::optional<core::Block>
   find_block(const crypto::HashBytes &hash) const;
-  [[nodiscard]] std::vector<core::Block> blocks_from(size_t from, size_t limit) const;
+  [[nodiscard]] std::vector<core::Block> blocks_from(size_t from,
+                                                     size_t limit) const;
 
   [[nodiscard]] bool has_transaction(const crypto::HashBytes &hash) const;
   [[nodiscard]] std::optional<core::Transaction>
