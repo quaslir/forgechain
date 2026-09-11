@@ -13,6 +13,7 @@
 #include "network/TcpSocket.hpp"
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -28,15 +29,24 @@ struct PeerEntry {
 
   bool is_outbound{false};
 };
+
+struct Sync {
+    std::chrono::steady_clock::time_point last_sync{
+        std::chrono::steady_clock::now()
+    };
+    size_t sync_cursor{0};
+};
+
 using VectorPeers = std::vector<PeerEntry>;
 constexpr std::chrono::milliseconds CLEANER_TIMEOUT =
     std::chrono::milliseconds(500);
-constexpr auto PING_INTERVAL = std::chrono::seconds(1);
-constexpr auto PING_TIMEOUT = std::chrono::seconds(45);
-
+constexpr auto PING_INTERVAL = std::chrono::seconds(5);
+constexpr auto PING_TIMEOUT = std::chrono::seconds(40);
+constexpr auto SYNC_INTERVAL = std::chrono::seconds(8);
 constexpr auto CONNECT_INTERVAL = std::chrono::milliseconds(1000);
 constexpr size_t TARGET_OUTBOUND_PEERS = 8;
 constexpr auto GOSSIP_INTERVAL = std::chrono::seconds(30);
+constexpr size_t MAX_BLOCKS_PER_RESPONSE = 2000;
 class Node {
 public:
   Node(uint16_t listen_port, VersionInfo info, chain::ChainManager &chain);
@@ -82,7 +92,8 @@ private:
   [[nodiscard]] size_t outbound_peer_count() const;
   void gossip_peers();
   void send_peer_list(Peer *peer, const PeerAddress &peer_addr);
-
+  void request_sync();
+  bool wait_or_stop(std::chrono::milliseconds duration);
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};
@@ -95,8 +106,10 @@ private:
   std::thread ping_thread_;
   std::thread connect_thread_;
   mutable std::mutex peers_mutex_;
-
+  mutable std::mutex shutdown_mutex_;
+  std::condition_variable shutdown_cv_;
   AddressBook address_book_;
   std::function<void(const crypto::str &, const crypto::str &)> logger_;
+  Sync sync_{};
 };
 } // namespace forgechain::network
