@@ -24,8 +24,7 @@ struct OrchestratorConfig {
   };
   uint16_t listen_port{8000};
   std::vector<network::PeerAddress> addresses;
-  // 0 disables mining entirely (pure listener node).
-  int mine_every_seconds = 0;
+  bool mine = false;
   consensus::ConsensusParams consensus = consensus::kMainParams;
   static constexpr size_t kMaxTxsPerBlock = 50;
   static constexpr size_t kMaxPending = 1000;

@@ -84,6 +84,7 @@ add_forgechain_test_executable(chain_tests
     chain/ChainManagerTimestampTest.cpp
     chain/ChainManagerForkOrderTest.cpp
     chain/ChainManagerForkValidationTest.cpp
+    chain/ChainManagerBlockTemplateTest.cpp
 )
 
 

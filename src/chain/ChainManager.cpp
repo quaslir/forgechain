@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <ctime>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -156,7 +157,11 @@ ChainManager::find_transaction(const crypto::HashBytes &hash) const {
 std::vector<core::Transaction>
 ChainManager::transactions_for_block(size_t limit) const {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  return select_transactions(limit);
+}
 
+std::vector<core::Transaction>
+ChainManager::select_transactions(size_t limit) const {
   auto candidates = mempool_.get_transactions_for_block(limit);
 
   core::Ledger simulated{ledger_};
@@ -169,6 +174,7 @@ ChainManager::transactions_for_block(size_t limit) const {
   }
   return valid;
 }
+
 std::vector<core::Transaction> ChainManager::mempool_snapshot() const {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
   return mempool_.get_transactions_for_block(mempool_.size());
@@ -228,7 +234,8 @@ BlockOutcome ChainManager::handle_fork_candidate(const core::Block &block) {
       auto result = core::build_fork_chain(blockchain_, orphan_pool_, tip);
       if (result == std::nullopt)
         continue;
-      if(!fork_is_valid(*result, now)) continue;
+      if (!fork_is_valid(*result, now))
+        continue;
       uint64_t work = core::fork_work(*result);
 
       if (!best.has_value() || work > best_work) {
@@ -360,5 +367,22 @@ bool ChainManager::fork_is_valid(const core::ForkChain &fork,
   }
 
   return true;
+}
+
+BlockTemplate ChainManager::block_template(size_t max_txs) const {
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  BlockTemplate tmpl;
+  tmpl.prev_hash = blockchain_.latest().hash_;
+  tmpl.height = blockchain_.size();
+  tmpl.difficulty =
+      consensus::next_difficulty(tmpl.height, params_, block_at_callback_);
+  tmpl.timestamp = std::max(
+      clock_(), consensus::median_time_past(tmpl.height, params_.mtp_window,
+                                            block_at_callback_) +
+                    1);
+
+  tmpl.transactions = select_transactions(max_txs);
+
+  return tmpl;
 }
 } // namespace forgechain::chain

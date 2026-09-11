@@ -11,7 +11,6 @@
 #include "storage/Storage.hpp"
 #include <cstddef>
 #include <cstdint>
-#include <ctime>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -25,6 +24,14 @@ struct BlockOutcome {
   Status status{Status::Rejected};
   std::vector<crypto::HashBytes> to_broadcast;
   std::optional<crypto::HashBytes> missing_parent;
+};
+
+struct BlockTemplate {
+  crypto::HashBytes prev_hash{};
+  size_t height{0};
+  uint64_t timestamp{0};
+  uint32_t difficulty{0};
+  std::vector<core::Transaction> transactions{};
 };
 
 class ChainManager {
@@ -53,8 +60,7 @@ public:
   [[nodiscard]] bool has_transaction(const crypto::HashBytes &hash) const;
   [[nodiscard]] std::optional<core::Transaction>
   find_transaction(const crypto::HashBytes &hash) const;
-  [[nodiscard]] std::vector<core::Transaction>
-  transactions_for_block(size_t limit) const;
+
   [[nodiscard]] std::vector<core::Transaction> mempool_snapshot() const;
 
   [[nodiscard]] std::optional<uint64_t>
@@ -64,14 +70,19 @@ public:
   [[nodiscard]] std::vector<std::pair<crypto::str, uint64_t>>
   all_balances() const;
   [[nodiscard]] uint32_t next_block_difficulty() const;
+  [[nodiscard]] BlockTemplate block_template(size_t max_txs) const;
+  [[nodiscard]] std::vector<core::Transaction>
+  transactions_for_block(size_t limit) const;
 
 private:
+  std::vector<core::Transaction> select_transactions(
+      size_t limit) const; // MUST be called with chain_mutex_!!!
   [[nodiscard]] bool apply_block_to_ledger(const core::Block &block);
   BlockOutcome handle_fork_candidate(const core::Block &block);
   std::optional<std::vector<crypto::HashBytes>>
   try_reorg(core::ForkChain &&fork_chain);
   [[nodiscard]] std::vector<core::Block> find_fork_tips(
-      const core::Block &start) const; // MUST be called with orphan_mutex_
+      const core::Block &start) const; // MUST be called with orphan_mutex_ !!!
   [[nodiscard]] bool fork_is_valid(const core::ForkChain &fork,
                                    uint64_t now) const;
   core::Blockchain blockchain_;
