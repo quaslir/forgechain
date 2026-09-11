@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <ctime>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -220,34 +219,35 @@ BlockOutcome ChainManager::handle_fork_candidate(const core::Block &block) {
     outcome.status = BlockOutcome::Status::NeedParent;
     outcome.missing_parent = block.prev_hash_;
   } else {
+    auto now = clock_();
     auto tips = find_fork_tips(block);
     std::optional<core::ForkChain> best;
     uint64_t best_work = 0;
 
+    for (const auto &tip : tips) {
+      auto result = core::build_fork_chain(blockchain_, orphan_pool_, tip);
+      if (result == std::nullopt)
+        continue;
+      if(!fork_is_valid(*result, now)) continue;
+      uint64_t work = core::fork_work(*result);
 
-    for(const auto& tip : tips) {
-        auto result = core::build_fork_chain(blockchain_, orphan_pool_, tip);
-        if(result == std::nullopt) continue;
-        uint64_t work = core::fork_work(*result);
-
-        if(!best.has_value() || work > best_work) {
-            best = std::move(*result);
-            best_work = work;
-        }
-
+      if (!best.has_value() || work > best_work) {
+        best = std::move(*result);
+        best_work = work;
+      }
     }
 
-    if(!best.has_value()) return outcome;
+    if (!best.has_value())
+      return outcome;
 
     auto reorg_hashes = try_reorg(std::move(*best));
-
 
     if (reorg_hashes.has_value()) {
       outcome.status = BlockOutcome::Status::Reorged;
       outcome.to_broadcast = std::move(*reorg_hashes);
 
-      for(const auto& hash : outcome.to_broadcast) {
-          orphan_pool_.remove_orphan(hash);
+      for (const auto &hash : outcome.to_broadcast) {
+        orphan_pool_.remove_orphan(hash);
       }
     }
   }
@@ -339,5 +339,26 @@ ChainManager::find_fork_tips(const core::Block &start) const {
   }
   return tips;
 }
+bool ChainManager::fork_is_valid(const core::ForkChain &fork,
+                                 uint64_t now) const {
+  auto height = blockchain_.find_height(fork.common_ancestor.hash_);
+  if (!height.has_value())
+    return false;
+  size_t base = *height + 1;
+  auto fork_block_at = [&](size_t index) -> const core::Block & {
+    return base > index ? blockchain_.at(index) : fork.blocks.at(index - base);
+  };
 
+  for (size_t i = 0; i < fork.blocks.size(); i++) {
+    const auto &block = fork.blocks[i];
+    if (!consensus::timestamp_is_valid(block, base + i, now, params_,
+                                       fork_block_at))
+      return false;
+    if (block.difficulty_ !=
+        consensus::next_difficulty(base + i, params_, fork_block_at))
+      return false;
+  }
+
+  return true;
+}
 } // namespace forgechain::chain

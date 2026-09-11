@@ -1,4 +1,5 @@
 #include "chain/ChainManager.hpp"
+#include "consensus/ConsensusParams.hpp"
 #include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
 #include "core/Transaction.hpp"
@@ -20,13 +21,15 @@ using namespace forgechain::crypto;
 using forgechain::consensus::mine_block;
 using forgechain::storage::Storage;
 
+using forgechain::consensus::ConsensusParams;
+
 namespace {
 
 constexpr size_t kMempoolSize = 1000;
 
+// Must match what consensus requires in the first epoch.
 constexpr uint32_t kLightDifficulty =
     forgechain::consensus::kTestParams.initial_difficulty;
-constexpr uint32_t kHeavyDifficulty = 8;
 
 std::string next_test_db_path() {
   static int counter = 0;
@@ -129,22 +132,25 @@ TEST(ChainPersistence, ReorgReplacesLosingBranchOnDisk) {
 
   const HashBytes genesis_hash = manager.latest_hash();
 
-  Block losing = mine_on(genesis_hash, 1000, kLightDifficulty);
-  ASSERT_EQ(manager.submit_block(losing).status, BlockOutcome::Status::Accepted);
-  ASSERT_EQ(storage.block_count(), 2u);
+  Block losing1 = mine_on(genesis_hash, 1000, kLightDifficulty);
+  ASSERT_EQ(manager.submit_block(losing1).status, BlockOutcome::Status::Accepted);
+  Block losing2 = mine_on(losing1.hash_, 1001, kLightDifficulty);
+  ASSERT_EQ(manager.submit_block(losing2).status, BlockOutcome::Status::Accepted);
+  ASSERT_EQ(storage.block_count(), 3u);
 
-  Block winning = mine_on(genesis_hash, 2000, kHeavyDifficulty);
-  auto outcome = manager.submit_block(winning);
-  ASSERT_EQ(outcome.status, BlockOutcome::Status::Reorged);
-
-  ASSERT_EQ(manager.chain_height(), 2u);
-  ASSERT_EQ(manager.latest_hash(), winning.hash_);
+  Block win1 = mine_on(genesis_hash, 2000, kLightDifficulty);
+  Block win2 = mine_on(win1.hash_, 2001, kLightDifficulty);
+  Block win3 = mine_on(win2.hash_, 2002, kLightDifficulty);
+  manager.submit_block(win1);
+  manager.submit_block(win2);
+  ASSERT_EQ(manager.submit_block(win3).status, BlockOutcome::Status::Reorged);
 
   auto disk = hashes_on_disk(db.path);
-  ASSERT_EQ(disk.size(), 2u);
+  ASSERT_EQ(disk.size(), 4u);
   EXPECT_EQ(disk[0], genesis_hash);
-  EXPECT_EQ(disk[1], winning.hash_)
-      << "database still holds the losing branch after a reorg";
+  EXPECT_EQ(disk[1], win1.hash_) << "height 1 still holds the losing branch";
+  EXPECT_EQ(disk[2], win2.hash_) << "height 2 still holds the losing branch";
+  EXPECT_EQ(disk[3], win3.hash_);
 }
 
 TEST(ChainPersistence, ReorgToLongerBranchWritesEveryNewBlock) {
@@ -173,21 +179,43 @@ TEST(ChainPersistence, ReorgToLongerBranchWritesEveryNewBlock) {
 }
 
 TEST(ChainPersistence, DiskShrinksWhenWinningBranchIsShorter) {
+  const ConsensusParams params{.initial_difficulty = 4,
+                               .min_difficulty = 1,
+                               .target_block_time = 10,
+                               .retarget_interval = 2,
+                               .mtp_window = 11,
+                               .max_future_drift = 120};
   TempDb db;
   Storage storage(db.path);
-  ChainManager manager(kMempoolSize, forgechain::consensus::kTestParams, &storage);
+  ChainManager manager(kMempoolSize, params, &storage);
 
-  const HashBytes genesis_hash = manager.latest_hash();
+  auto extend = [&](uint64_t timestamp, uint32_t expected_difficulty) {
+    EXPECT_EQ(manager.next_block_difficulty(), expected_difficulty);
+    Block block = mine_on(manager.latest_hash(), timestamp, expected_difficulty);
+    EXPECT_EQ(manager.submit_block(block).status, BlockOutcome::Status::Accepted);
+    return block;
+  };
 
-  Block losing1 = mine_on(genesis_hash, 1000, kLightDifficulty);
-  ASSERT_EQ(manager.submit_block(losing1).status,
-            BlockOutcome::Status::Accepted);
-  Block losing2 = mine_on(losing1.hash_, 1001, kLightDifficulty);
-  ASSERT_EQ(manager.submit_block(losing2).status,
-            BlockOutcome::Status::Accepted);
-  Block winning = mine_on(genesis_hash, 2000, kHeavyDifficulty);
-  auto outcome = manager.submit_block(winning);
+  extend(1000, 4);
+  extend(1010, 4);
+  Block shared_tip = extend(1020, 4);
+
+  extend(1030, 4);
+  extend(1130, 4);
+  extend(1140, 2);
+  extend(1150, 2);
+  ASSERT_EQ(manager.chain_height(), 8u);
+  ASSERT_EQ(storage.block_count(), 8u);
+
+  Block b4 = mine_on(shared_tip.hash_, 1031, 4);
+  Block b5 = mine_on(b4.hash_, 1032, 4);
+  Block b6 = mine_on(b5.hash_, 1033, 6);
+  manager.submit_block(b4);
+  manager.submit_block(b5);
+  auto outcome = manager.submit_block(b6);
   ASSERT_EQ(outcome.status, BlockOutcome::Status::Reorged);
+  ASSERT_EQ(manager.latest_hash(), b6.hash_);
+  ASSERT_EQ(manager.chain_height(), 7u);
 
   auto disk = hashes_on_disk(db.path);
   ASSERT_EQ(disk.size(), manager.chain_height())

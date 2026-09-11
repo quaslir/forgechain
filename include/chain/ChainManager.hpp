@@ -70,8 +70,10 @@ private:
   BlockOutcome handle_fork_candidate(const core::Block &block);
   std::optional<std::vector<crypto::HashBytes>>
   try_reorg(core::ForkChain &&fork_chain);
-  [[nodiscard]] std::vector<core::Block>
-  find_fork_tips(const core::Block &start) const;
+  [[nodiscard]] std::vector<core::Block> find_fork_tips(
+      const core::Block &start) const; // MUST be called with orphan_mutex_
+  [[nodiscard]] bool fork_is_valid(const core::ForkChain &fork,
+                                   uint64_t now) const;
   core::Blockchain blockchain_;
   core::Mempool mempool_;
   core::OrphanPool orphan_pool_;
