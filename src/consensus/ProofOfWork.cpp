@@ -141,7 +141,8 @@ next_difficulty(size_t height, const ConsensusParams &params,
 uint64_t
 median_time_past(size_t height, size_t window,
                  const std::function<const core::Block &(size_t)> &block_at) {
-if(height == 0 || window == 0) return 0;
+  if (height == 0 || window == 0)
+    return 0;
   size_t start = height > window ? height - window : 0;
   std::vector<uint64_t> timestamps;
   timestamps.reserve(height - start);

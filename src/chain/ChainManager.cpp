@@ -1,4 +1,5 @@
 #include "chain/ChainManager.hpp"
+#include "consensus/ConsensusParams.hpp"
 #include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
@@ -10,14 +11,25 @@
 #include "storage/Storage.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <ctime>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 namespace forgechain::chain {
-ChainManager::ChainManager(size_t mempool_max_size, storage::Storage *storage)
-    : mempool_(mempool_max_size), storage_(storage) {
+ChainManager::ChainManager(size_t mempool_max_size,
+                           consensus::ConsensusParams params,
+                           storage::Storage *storage, Clock clock)
+    : mempool_(mempool_max_size), storage_(storage), params_(params),
+      clock_(std::move(clock)) {
+
+  if (!clock_) {
+    clock_ = []() -> uint64_t {
+      return static_cast<uint64_t>(std::time(nullptr));
+    };
+  }
   if (storage_ && storage_->block_count() == 0) {
     storage_->save_block(blockchain_[0], 0);
   }
@@ -34,6 +46,13 @@ BlockOutcome ChainManager::submit_block(const core::Block &block) {
 
   switch (block_status) {
   case core::BlockValidation::Valid:
+    if (!consensus::timestamp_is_valid(
+            block, blockchain_.size(), clock_(), params_,
+            [this](size_t index) -> const core::Block & {
+              return blockchain_.at(index);
+            })) {
+      return outcome;
+    }
     if (apply_block_to_ledger(block)) {
       for (const auto &tx : block.transactions_) {
         mempool_.remove_transaction(tx);

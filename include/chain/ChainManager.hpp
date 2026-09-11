@@ -1,4 +1,5 @@
 #pragma once
+#include "consensus/ConsensusParams.hpp"
 #include "core/Block.hpp"
 #include "core/Blockchain.hpp"
 #include "core/ForkResolution.hpp"
@@ -10,6 +11,8 @@
 #include "storage/Storage.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <ctime>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <utility>
@@ -26,8 +29,10 @@ struct BlockOutcome {
 
 class ChainManager {
 public:
+  using Clock = std::function<uint64_t()>;
   explicit ChainManager(size_t mempool_max_size,
-                        storage::Storage *storage = nullptr);
+                        consensus::ConsensusParams params,
+                        storage::Storage *storage = nullptr, Clock clock = {});
 
   ChainManager(const ChainManager &) = delete;
   ChainManager &operator=(const ChainManager &) = delete;
@@ -70,6 +75,8 @@ private:
   core::OrphanPool orphan_pool_;
   core::Ledger ledger_;
   storage::Storage *storage_;
+  consensus::ConsensusParams params_;
+  Clock clock_;
   mutable std::mutex chain_mutex_;
   mutable std::mutex orphan_mutex_;
 };

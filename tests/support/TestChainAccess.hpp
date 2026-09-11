@@ -20,13 +20,13 @@
 #include "network/Node.hpp"
 #include <cstddef>
 #include <cstdint>
-
+#include "consensus/ConsensusParams.hpp"
 namespace forgechain::testsupport {
 
 inline constexpr size_t kTestMempoolSize = 1000;
 
 struct ChainHolder {
-  chain::ChainManager manager{kTestMempoolSize};
+  chain::ChainManager manager{kTestMempoolSize, consensus::kTestParams};
 };
 struct TestNode : ChainHolder, network::Node {
   explicit TestNode(uint16_t listen_port = 0)

@@ -65,7 +65,7 @@ std::vector<HashBytes> hashes_on_disk(const std::string &path) {
 TEST(ChainPersistence, GenesisIsWrittenWhenDatabaseIsEmpty) {
   TempDb db;
   Storage storage(db.path);
-  ChainManager manager(kMempoolSize, &storage);
+  ChainManager manager(kMempoolSize, forgechain::consensus::kTestParams, &storage);
 
   EXPECT_EQ(storage.block_count(), 1u);
   auto genesis = storage.load_block(0);
@@ -76,7 +76,7 @@ TEST(ChainPersistence, GenesisIsWrittenWhenDatabaseIsEmpty) {
 TEST(ChainPersistence, AcceptedBlockIsWrittenAtItsOwnHeight) {
   TempDb db;
   Storage storage(db.path);
-  ChainManager manager(kMempoolSize, &storage);
+  ChainManager manager(kMempoolSize, forgechain::consensus::kTestParams, &storage);
 
   Block first = mine_on(manager.latest_hash(), 1000, kLightDifficulty);
   ASSERT_EQ(manager.submit_block(first).status, BlockOutcome::Status::Accepted);
@@ -90,7 +90,7 @@ TEST(ChainPersistence, AcceptedBlockIsWrittenAtItsOwnHeight) {
 TEST(ChainPersistence, RejectedBlockIsNotWritten) {
   TempDb db;
   Storage storage(db.path);
-  ChainManager manager(kMempoolSize, &storage);
+  ChainManager manager(kMempoolSize, forgechain::consensus::kTestParams, &storage);
 
   HashBytes bogus_prev{};
   bogus_prev.fill(0x7f);
@@ -104,7 +104,7 @@ TEST(ChainPersistence, RejectedBlockIsNotWritten) {
 TEST(ChainPersistence, HeightsStayContiguousAcrossManyAppends) {
   TempDb db;
   Storage storage(db.path);
-  ChainManager manager(kMempoolSize, &storage);
+  ChainManager manager(kMempoolSize, forgechain::consensus::kTestParams, &storage);
 
   for (int i = 0; i < 10; i++) {
     Block b = mine_on(manager.latest_hash(), 1000 + static_cast<uint64_t>(i),
@@ -124,7 +124,7 @@ TEST(ChainPersistence, HeightsStayContiguousAcrossManyAppends) {
 TEST(ChainPersistence, ReorgReplacesLosingBranchOnDisk) {
   TempDb db;
   Storage storage(db.path);
-  ChainManager manager(kMempoolSize, &storage);
+  ChainManager manager(kMempoolSize, forgechain::consensus::kTestParams, &storage);
 
   const HashBytes genesis_hash = manager.latest_hash();
 
@@ -149,7 +149,7 @@ TEST(ChainPersistence, ReorgReplacesLosingBranchOnDisk) {
 TEST(ChainPersistence, ReorgToLongerBranchWritesEveryNewBlock) {
   TempDb db;
   Storage storage(db.path);
-  ChainManager manager(kMempoolSize, &storage);
+  ChainManager manager(kMempoolSize, forgechain::consensus::kTestParams, &storage);
 
   const HashBytes genesis_hash = manager.latest_hash();
 
@@ -174,7 +174,7 @@ TEST(ChainPersistence, ReorgToLongerBranchWritesEveryNewBlock) {
 TEST(ChainPersistence, DiskShrinksWhenWinningBranchIsShorter) {
   TempDb db;
   Storage storage(db.path);
-  ChainManager manager(kMempoolSize, &storage);
+  ChainManager manager(kMempoolSize, forgechain::consensus::kTestParams, &storage);
 
   const HashBytes genesis_hash = manager.latest_hash();
 
@@ -198,7 +198,7 @@ TEST(ChainPersistence, DiskShrinksWhenWinningBranchIsShorter) {
 }
 
 TEST(ChainPersistence, ManagerWithoutStorageDoesNotCrash) {
-  ChainManager manager(kMempoolSize, nullptr);
+  ChainManager manager(kMempoolSize, forgechain::consensus::kTestParams, nullptr);
 
   Block first = mine_on(manager.latest_hash(), 1000, kLightDifficulty);
   EXPECT_EQ(manager.submit_block(first).status, BlockOutcome::Status::Accepted);
@@ -211,7 +211,7 @@ TEST(ChainPersistence, ExistingDatabaseKeepsItsGenesis) {
 
   {
     Storage storage(db.path);
-    ChainManager manager(kMempoolSize, &storage);
+    ChainManager manager(kMempoolSize, forgechain::consensus::kTestParams, &storage);
     original_genesis = manager.block_at(0).hash_;
 
     Block first = mine_on(manager.latest_hash(), 1000, kLightDifficulty);
@@ -221,7 +221,7 @@ TEST(ChainPersistence, ExistingDatabaseKeepsItsGenesis) {
 
   {
     Storage storage(db.path);
-    ChainManager manager(kMempoolSize, &storage);
+    ChainManager manager(kMempoolSize, forgechain::consensus::kTestParams, &storage);
     auto genesis = storage.load_block(0);
     ASSERT_TRUE(genesis.has_value());
     EXPECT_EQ(genesis->hash_, original_genesis);
