@@ -24,5 +24,5 @@ struct Transaction {
   [[nodiscard]] crypto::HashBytes compute_hash() const;
   bool operator==(const Transaction &tx) const;
 };
-
+  [[nodiscard]] bool has_valid_signature(const Transaction&tx);
 } // namespace forgechain::core

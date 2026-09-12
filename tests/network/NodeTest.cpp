@@ -326,8 +326,8 @@ TEST(Node, TransactionsForBlockFiltersOutTransactionSenderCannotAfford) {
 
     Transaction affordable = make_signed_test_tx(bob, "charlie-address", 20);
     Transaction unaffordable = make_signed_test_tx(alice, "charlie-address", 500);
-    server.mempool().add_transaction(affordable, bob.keys.public_key);
-    server.mempool().add_transaction(unaffordable, alice.keys.public_key);
+    server.mempool().add_transaction(affordable);
+    server.mempool().add_transaction(unaffordable);
 
     auto selected = server.chain_manager().transactions_for_block(10);
 
@@ -344,8 +344,8 @@ TEST(Node, TransactionsForBlockKeepsBothWhenSequentiallyAffordable) {
 
     Transaction first = make_signed_test_tx(alice, bob.address, 60);
     Transaction second = make_signed_test_tx(bob, "charlie-address", 30);
-    server.mempool().add_transaction(first, alice.keys.public_key);
-    server.mempool().add_transaction(second, bob.keys.public_key);
+    server.mempool().add_transaction(first);
+    server.mempool().add_transaction(second);
 
     auto selected = server.chain_manager().transactions_for_block(10);
 
@@ -360,7 +360,7 @@ TEST(Node, TransactionsForBlockDoesNotMutateRealLedger) {
     server.ledger().set_balance(bob.address, 0);
 
     Transaction tx = make_signed_test_tx(alice, bob.address, 60);
-    server.mempool().add_transaction(tx, alice.keys.public_key);
+    server.mempool().add_transaction(tx);
 
     auto ignored = server.chain_manager().transactions_for_block(10);
     (void)ignored;
@@ -385,7 +385,7 @@ TEST(Node, TransactionsForBlockRespectsLimitAfterFiltering) {
     for (int i = 0; i < 5; ++i) {
         Transaction tx = make_signed_test_tx(alice, "recipient-address",
                                               static_cast<uint64_t>(10 + i));
-        server.mempool().add_transaction(tx, alice.keys.public_key);
+        server.mempool().add_transaction(tx);
     }
 
     auto selected = server.chain_manager().transactions_for_block(2);

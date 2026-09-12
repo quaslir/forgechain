@@ -90,7 +90,7 @@ BlockOutcome ChainManager::submit_block(const core::Block &block) {
 }
 bool ChainManager::submit_transaction(const core::Transaction &tx) {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
-  return mempool_.add_transaction(tx, tx.sender_public_key_);
+  return mempool_.add_transaction(tx);
 }
 void ChainManager::set_balance(const crypto::str &address, uint64_t amount) {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
@@ -204,11 +204,14 @@ bool ChainManager::apply_block_to_ledger(const core::Block &block) {
   const auto &transactions = block.transactions_;
 
   for (size_t i = 0; i < transactions.size(); i++) {
-    if (!ledger_.apply_transaction(transactions[i])) {
-      for (size_t j = i; j > 0; j--) {
-        ledger_.reverse_transaction(transactions[j - 1]);
-      }
-      return false;
+
+      const auto&tx = transactions[i];
+      bool ok = tx.sender_ == core::kCoinbaseSender || core::has_valid_signature(tx);
+    if(!ok || !ledger_.apply_transaction(tx)) {
+        for(size_t j = i; j > 0; j--) {
+            ledger_.reverse_transaction(transactions[j - 1]);
+        }
+        return false;
     }
   }
 
@@ -275,6 +278,7 @@ ChainManager::try_reorg(core::ForkChain &&fork_chain) {
   for (const auto &block : fork_chain.blocks) {
     new_hashes.push_back(block.hash_);
     for (const auto &tx : block.transactions_) {
+        if(tx.sender_ != core::kCoinbaseSender && !core::has_valid_signature(tx)) return std::nullopt;
       new_branch_hashes.insert(tx.compute_hash());
       new_branch_txs.push_back(tx);
     }
@@ -299,7 +303,7 @@ ChainManager::try_reorg(core::ForkChain &&fork_chain) {
       if (new_branch_hashes.contains(tx->compute_hash()))
         continue;
       ledger_.reverse_transaction(*tx);
-      mempool_.add_transaction(*tx, tx->sender_public_key_);
+      mempool_.add_transaction(*tx);
     }
   }
 
