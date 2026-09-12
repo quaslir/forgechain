@@ -234,8 +234,11 @@ BlockOutcome ChainManager::handle_fork_candidate(const core::Block &block) {
       auto result = core::build_fork_chain(blockchain_, orphan_pool_, tip);
       if (result == std::nullopt)
         continue;
-      if (!fork_is_valid(*result, now))
-        continue;
+      size_t prefix = valid_prefix_length(*result, now);
+      if(prefix == 0) continue;
+      if(prefix < result->blocks.size()) {
+          result->blocks.erase(result->blocks.begin() + static_cast<long>(prefix), result->blocks.end());
+      }
       uint64_t work = core::fork_work(*result);
 
       if (!best.has_value() || work > best_work) {
@@ -346,11 +349,11 @@ ChainManager::find_fork_tips(const core::Block &start) const {
   }
   return tips;
 }
-bool ChainManager::fork_is_valid(const core::ForkChain &fork,
+size_t ChainManager::valid_prefix_length(const core::ForkChain &fork,
                                  uint64_t now) const {
   auto height = blockchain_.find_height(fork.common_ancestor.hash_);
   if (!height.has_value())
-    return false;
+    return 0;
   size_t base = *height + 1;
   auto fork_block_at = [&](size_t index) -> const core::Block & {
     return base > index ? blockchain_.at(index) : fork.blocks.at(index - base);
@@ -360,13 +363,13 @@ bool ChainManager::fork_is_valid(const core::ForkChain &fork,
     const auto &block = fork.blocks[i];
     if (!consensus::timestamp_is_valid(block, base + i, now, params_,
                                        fork_block_at))
-      return false;
+      return i;
     if (block.difficulty_ !=
         consensus::next_difficulty(base + i, params_, fork_block_at))
-      return false;
+      return i;
   }
 
-  return true;
+  return fork.blocks.size();
 }
 
 BlockTemplate ChainManager::block_template(size_t max_txs) const {

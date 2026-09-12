@@ -16,7 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
-
+#include <vector>
 using namespace forgechain::chain;
 using namespace forgechain::core;
 using forgechain::consensus::ConsensusParams;
@@ -245,4 +245,45 @@ TEST(ChainManagerForkValidation, RetargetInsideForkUsesForkTimestamps) {
   Block right4 = mine_on(f3.hash_, kNow - 896, 6);
   EXPECT_EQ(f.manager.submit_block(right4).status, Status::Reorged);
   EXPECT_EQ(f.manager.latest_hash(), right4.hash_);
+}
+
+TEST(ChainManagerForkValidation, InvalidChildDoesNotBlockValidBranch) {
+  Fixture f;
+  Block old_tip = f.extend(1, kNow - 1000);
+
+  Block w1 = mine_on(f.genesis(), kNow - 500);
+  Block w2 = mine_on(w1.hash_, kNow - 499);
+  Block poison = mine_on(w2.hash_, kNow - 498, 0);
+
+  f.manager.submit_block(w1);
+  f.manager.submit_block(poison);
+  auto outcome = f.manager.submit_block(w2);
+
+  EXPECT_EQ(outcome.status, Status::Reorged);
+  EXPECT_EQ(f.manager.latest_hash(), w2.hash_);
+  EXPECT_EQ(outcome.to_broadcast,
+            (std::vector<HashBytes>{w1.hash_, w2.hash_}));
+}
+
+TEST(ChainManagerForkValidation, TruncationKeepsOnlyBlocksBeforeTheBadOne) {
+  Fixture f;
+  f.extend(1, kNow - 1000);
+
+  Block w1 = mine_on(f.genesis(), kNow - 500);
+  Block w2 = mine_on(w1.hash_, kNow - 499);
+  Block bad = mine_on(w2.hash_, kNow - 498, kDifficulty + 1);
+  Block w4 = mine_on(bad.hash_, kNow - 497);
+  Block w5 = mine_on(w4.hash_, kNow - 496);
+
+  EXPECT_EQ(f.manager.submit_block(w5).status, Status::NeedParent);
+  EXPECT_EQ(f.manager.submit_block(w4).status, Status::NeedParent);
+  EXPECT_EQ(f.manager.submit_block(bad).status, Status::NeedParent);
+  EXPECT_EQ(f.manager.submit_block(w2).status, Status::NeedParent);
+  auto outcome = f.manager.submit_block(w1);
+
+  EXPECT_EQ(outcome.status, Status::Reorged);
+  EXPECT_EQ(f.manager.latest_hash(), w2.hash_);
+  EXPECT_EQ(f.manager.chain_height(), 3u);
+  EXPECT_FALSE(f.manager.blockchain_.has_block(bad.hash_));
+  EXPECT_FALSE(f.manager.blockchain_.has_block(w4.hash_));
 }
