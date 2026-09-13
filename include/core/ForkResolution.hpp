@@ -11,7 +11,7 @@ struct ForkChain {
   std::vector<Block> blocks;
   Block common_ancestor;
 };
-constexpr size_t kMaxForkDepth = 100;
+constexpr size_t kMaxForkDepth = 1000;
 std::optional<ForkChain> build_fork_chain(const Blockchain &chain,
                                           const OrphanPool &pool,
                                           const Block &tip);

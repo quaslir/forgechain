@@ -139,10 +139,8 @@ TEST(ChainManagerBlockTemplate, TransactionsAreFilteredByLedger) {
   TestWallet bob = make_wallet();
   f.manager.ledger_.set_balance(alice.address, 10);
   f.manager.ledger_.set_balance(bob.address, 100);
-  f.manager.mempool_.add_transaction(make_signed_tx(bob, "carol", 20),
-                                     bob.keys.public_key);
-  f.manager.mempool_.add_transaction(make_signed_tx(alice, "carol", 500),
-                                     alice.keys.public_key);
+  f.manager.mempool_.add_transaction(make_signed_tx(bob, "carol", 20));
+  f.manager.mempool_.add_transaction(make_signed_tx(alice, "carol", 500));
 
   auto tmpl = f.manager.block_template(50);
 
@@ -156,8 +154,7 @@ TEST(ChainManagerBlockTemplate, RespectsMaxTxs) {
   f.manager.ledger_.set_balance(alice.address, 1000);
   for (int i = 0; i < 5; i++) {
     f.manager.mempool_.add_transaction(
-        make_signed_tx(alice, "carol-" + std::to_string(i), 10),
-        alice.keys.public_key);
+        make_signed_tx(alice, "carol-" + std::to_string(i), 10));
   }
 
   EXPECT_EQ(f.manager.block_template(3).transactions.size(), 3u);
@@ -168,7 +165,7 @@ TEST(ChainManagerBlockTemplate, BlockWithTemplateTransactionsIsAccepted) {
   TestWallet alice = make_wallet();
   f.manager.ledger_.set_balance(alice.address, 100);
   Transaction tx = make_signed_tx(alice, "carol", 30);
-  f.manager.mempool_.add_transaction(tx, alice.keys.public_key);
+  f.manager.mempool_.add_transaction(tx);
 
   Block block = f.mine_from_template();
 

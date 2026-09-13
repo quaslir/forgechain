@@ -49,7 +49,7 @@ TEST(FullBlockchainLifecycle, WalletToMinedBlockToLedgerEndToEnd) {
 
     Mempool mempool(1000);
     Transaction tx = make_signed_tx(alice, bob.address, 300);
-    ASSERT_TRUE(mempool.add_transaction(tx, alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(tx));
 
     auto txsForBlock = mempool.get_transactions_for_block(10);
     ASSERT_EQ(txsForBlock.size(), 1u);
@@ -81,8 +81,8 @@ TEST(FullBlockchainLifecycle, MultipleTransactionsInOneMinedBlock) {
     ledger.set_balance(alice.address, 1000);
 
     Mempool mempool(1000);
-    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, bob.address, 200), alice.keys.public_key));
-    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, charlie.address, 100), alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, bob.address, 200)));
+    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, charlie.address, 100)));
 
     auto txsForBlock = mempool.get_transactions_for_block(10);
     ASSERT_EQ(txsForBlock.size(), 2u);
@@ -113,9 +113,9 @@ TEST(FullBlockchainLifecycle, TwoBlocksMinedSequentiallyDrainMempoolCorrectly) {
     ledger.set_balance(bob.address, 0);
 
     Mempool mempool(1000);
-    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, bob.address, 300), alice.keys.public_key));
-    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, charlie.address, 150), alice.keys.public_key));
-    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(bob, charlie.address, 50), bob.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, bob.address, 300)));
+    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, charlie.address, 150)));
+    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(bob, charlie.address, 50)));
 
     ASSERT_EQ(mempool.size(), 3u);
 
@@ -159,9 +159,9 @@ TEST(FullBlockchainLifecycle, TotalSupplyConservedAcrossMinedBlocks) {
     ledger.set_balance(alice.address, kInitialSupply);
 
     Mempool mempool(1000);
-    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, bob.address, 4000), alice.keys.public_key));
-    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(bob, charlie.address, 1500), bob.keys.public_key));
-    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(charlie, alice.address, 500), charlie.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, bob.address, 4000)));
+    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(bob, charlie.address, 1500)));
+    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(charlie, alice.address, 500)));
 
     for (int round = 0; round < 3 && !mempool.empty(); ++round) {
         auto txs = mempool.get_transactions_for_block(1);
@@ -191,7 +191,7 @@ TEST(FullBlockchainLifecycle, TamperedMinedTransactionFailsBlockIntegrityCheck) 
 
     Blockchain chain;
     Mempool mempool(1000);
-    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, bob.address, 300), alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, bob.address, 300)));
 
     auto txs = mempool.get_transactions_for_block(10);
     Block mined = mine_block(1, chain.latest().hash_, 1700000000, kTestDifficulty, txs);
@@ -216,7 +216,7 @@ TEST(FullBlockchainLifecycle, ChainRemainsValidWhenTamperedBlockIsNotActuallyIns
 
     Blockchain chain;
     Mempool mempool(1000);
-    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, bob.address, 300), alice.keys.public_key));
+    ASSERT_TRUE(mempool.add_transaction(make_signed_tx(alice, bob.address, 300)));
 
     auto txs = mempool.get_transactions_for_block(10);
     Block mined = mine_block(1, chain.latest().hash_, 1700000000, kTestDifficulty, txs);
@@ -239,10 +239,10 @@ TEST(FullBlockchainLifecycle, ForgedTransactionNeverReachesAMinedBlock) {
     Transaction forged(alice.address, mallory.address, 500, mallory.keys.public_key, 0);
     forged.signature_ = sign(forged.serialize_for_signing(), mallory.keys.private_key);
 
-    EXPECT_FALSE(mempool.add_transaction(forged, mallory.keys.public_key));
+    EXPECT_FALSE(mempool.add_transaction(forged));
     EXPECT_TRUE(mempool.empty());
 
-    EXPECT_TRUE(mempool.add_transaction(make_signed_tx(alice, bob.address, 100), alice.keys.public_key));
+    EXPECT_TRUE(mempool.add_transaction(make_signed_tx(alice, bob.address, 100)));
     EXPECT_EQ(mempool.size(), 1u);
 }
 
@@ -265,7 +265,7 @@ TEST(FullBlockchainLifecycle, MultipleWalletsMultipleRoundsStayConsistent) {
         int next = (i + 1) % kWalletCount;
         Transaction tx = make_signed_tx(wallets[static_cast<size_t>(i)],
                                          wallets[static_cast<size_t>(next)].address, 10);
-        ASSERT_TRUE(mempool.add_transaction(tx, wallets[static_cast<size_t>(i)].keys.public_key));
+        ASSERT_TRUE(mempool.add_transaction(tx));
     }
 
     auto txs = mempool.get_transactions_for_block(static_cast<size_t>(kWalletCount));

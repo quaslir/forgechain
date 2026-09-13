@@ -10,8 +10,7 @@ class Mempool {
 public:
   Mempool(size_t max_size);
 
-  bool add_transaction(const Transaction &tx,
-                       const crypto::bytes &sender_public_key);
+  bool add_transaction(const Transaction &tx);
   void remove_transaction(const Transaction &tx);
   [[nodiscard]] bool has_transaction(const crypto::HashBytes &hash) const;
   [[nodiscard]] std::optional<Transaction>

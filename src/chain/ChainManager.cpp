@@ -90,7 +90,7 @@ BlockOutcome ChainManager::submit_block(const core::Block &block) {
 }
 bool ChainManager::submit_transaction(const core::Transaction &tx) {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
-  return mempool_.add_transaction(tx, tx.sender_public_key_);
+  return mempool_.add_transaction(tx);
 }
 void ChainManager::set_balance(const crypto::str &address, uint64_t amount) {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
@@ -204,11 +204,14 @@ bool ChainManager::apply_block_to_ledger(const core::Block &block) {
   const auto &transactions = block.transactions_;
 
   for (size_t i = 0; i < transactions.size(); i++) {
-    if (!ledger_.apply_transaction(transactions[i])) {
-      for (size_t j = i; j > 0; j--) {
-        ledger_.reverse_transaction(transactions[j - 1]);
-      }
-      return false;
+
+      const auto&tx = transactions[i];
+      bool ok = tx.sender_ == core::kCoinbaseSender || core::has_valid_signature(tx);
+    if(!ok || !ledger_.apply_transaction(tx)) {
+        for(size_t j = i; j > 0; j--) {
+            ledger_.reverse_transaction(transactions[j - 1]);
+        }
+        return false;
     }
   }
 
@@ -234,8 +237,11 @@ BlockOutcome ChainManager::handle_fork_candidate(const core::Block &block) {
       auto result = core::build_fork_chain(blockchain_, orphan_pool_, tip);
       if (result == std::nullopt)
         continue;
-      if (!fork_is_valid(*result, now))
-        continue;
+      size_t prefix = valid_prefix_length(*result, now);
+      if(prefix == 0) continue;
+      if(prefix < result->blocks.size()) {
+          result->blocks.erase(result->blocks.begin() + static_cast<long>(prefix), result->blocks.end());
+      }
       uint64_t work = core::fork_work(*result);
 
       if (!best.has_value() || work > best_work) {
@@ -272,6 +278,7 @@ ChainManager::try_reorg(core::ForkChain &&fork_chain) {
   for (const auto &block : fork_chain.blocks) {
     new_hashes.push_back(block.hash_);
     for (const auto &tx : block.transactions_) {
+        if(tx.sender_ != core::kCoinbaseSender && !core::has_valid_signature(tx)) return std::nullopt;
       new_branch_hashes.insert(tx.compute_hash());
       new_branch_txs.push_back(tx);
     }
@@ -296,7 +303,7 @@ ChainManager::try_reorg(core::ForkChain &&fork_chain) {
       if (new_branch_hashes.contains(tx->compute_hash()))
         continue;
       ledger_.reverse_transaction(*tx);
-      mempool_.add_transaction(*tx, tx->sender_public_key_);
+      mempool_.add_transaction(*tx);
     }
   }
 
@@ -346,11 +353,11 @@ ChainManager::find_fork_tips(const core::Block &start) const {
   }
   return tips;
 }
-bool ChainManager::fork_is_valid(const core::ForkChain &fork,
+size_t ChainManager::valid_prefix_length(const core::ForkChain &fork,
                                  uint64_t now) const {
   auto height = blockchain_.find_height(fork.common_ancestor.hash_);
   if (!height.has_value())
-    return false;
+    return 0;
   size_t base = *height + 1;
   auto fork_block_at = [&](size_t index) -> const core::Block & {
     return base > index ? blockchain_.at(index) : fork.blocks.at(index - base);
@@ -360,13 +367,13 @@ bool ChainManager::fork_is_valid(const core::ForkChain &fork,
     const auto &block = fork.blocks[i];
     if (!consensus::timestamp_is_valid(block, base + i, now, params_,
                                        fork_block_at))
-      return false;
+      return i;
     if (block.difficulty_ !=
         consensus::next_difficulty(base + i, params_, fork_block_at))
-      return false;
+      return i;
   }
 
-  return true;
+  return fork.blocks.size();
 }
 
 BlockTemplate ChainManager::block_template(size_t max_txs) const {

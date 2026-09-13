@@ -12,9 +12,9 @@ struct ConsensusParams {
   uint64_t max_future_drift;
 };
 
-inline constexpr ConsensusParams kMainParams{.initial_difficulty = 15,
-                                             .min_difficulty = 8,
-                                             .target_block_time = 10,
+inline constexpr ConsensusParams kMainParams{.initial_difficulty = 1,
+                                             .min_difficulty = 5,
+                                             .target_block_time = 1,
                                              .retarget_interval = 20,
                                              .mtp_window = 11,
                                              .max_future_drift = 120};

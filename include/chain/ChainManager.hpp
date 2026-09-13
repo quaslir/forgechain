@@ -83,7 +83,7 @@ private:
   try_reorg(core::ForkChain &&fork_chain);
   [[nodiscard]] std::vector<core::Block> find_fork_tips(
       const core::Block &start) const; // MUST be called with orphan_mutex_ !!!
-  [[nodiscard]] bool fork_is_valid(const core::ForkChain &fork,
+  [[nodiscard]] size_t valid_prefix_length(const core::ForkChain &fork,
                                    uint64_t now) const;
   core::Blockchain blockchain_;
   core::Mempool mempool_;

@@ -1,6 +1,8 @@
 #include "core/Transaction.hpp"
+#include "crypto/Address.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "crypto/Hash.hpp"
+#include "crypto/Signature.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -133,6 +135,12 @@ bool Transaction::operator==(const Transaction &tx) const {
   return sender_ == tx.sender_ && recipient_ == tx.recipient_ &&
          amount_ == tx.amount_ && signature_ == tx.signature_ &&
          fee_ == tx.fee_;
+}
+
+bool has_valid_signature(const Transaction&tx) {
+    if(tx.sender_ == kCoinbaseSender) return false;
+    if(crypto::derive_address(tx.sender_public_key_) != tx.sender_) return false;
+    return crypto::verify(tx.serialize_for_signing(), tx.signature_, tx.sender_public_key_);
 }
 
 } // namespace forgechain::core
