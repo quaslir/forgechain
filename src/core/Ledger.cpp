@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 namespace forgechain::core {
+
 void Ledger::set_balance(const core::str &address, uint64_t amount) {
   balances_[address] = amount;
 }
@@ -23,8 +24,9 @@ bool Ledger::apply_transaction(const Transaction &tx) {
       return false;
     if (tx.amount_ + tx.fee_ > balances_[tx.sender_])
       return false;
-
+    if(tx.nonce_ != next_nonce(tx.sender_)) return false;
     balances_[tx.sender_] -= tx.amount_ + tx.fee_;
+      nonces_[tx.sender_] = tx.nonce_ + 1;
   }
   balances_[tx.recipient_] += tx.amount_;
   return true;
@@ -34,11 +36,12 @@ bool Ledger::reverse_transaction(const Transaction &tx) {
     return false;
   if (tx.amount_ > balances_[tx.recipient_])
     return false;
-  balances_[tx.recipient_] -= tx.amount_;
   if (tx.sender_ != kCoinbaseSender) {
+      if (next_nonce(tx.sender_) != tx.nonce_ + 1) return false;
     balances_[tx.sender_] += tx.amount_ + tx.fee_;
+    nonces_[tx.sender_] = tx.nonce_;
   }
-
+  balances_[tx.recipient_] -= tx.amount_;
   return true;
 }
 
@@ -49,5 +52,10 @@ std::vector<std::pair<crypto::str, uint64_t>> Ledger::all_balances() const {
     balances.emplace_back(address, amount);
   }
   return balances;
+}
+
+uint64_t Ledger::next_nonce(const str& address) const {
+    if(nonces_.contains(address)) return nonces_.at(address);
+    return 0;
 }
 } // namespace forgechain::core

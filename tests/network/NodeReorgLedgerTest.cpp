@@ -72,8 +72,9 @@ Wallet make_wallet() {
 }
 
 Transaction make_signed_tx(const Wallet &sender, const str &recipient,
-                            uint64_t amount, uint64_t fee = 0) {
-  Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee);
+                            uint64_t amount, uint64_t fee = 0,
+                            uint64_t nonce = 0) {
+  Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee, nonce);
   tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
   return tx;
 }
@@ -212,7 +213,7 @@ TEST(NodeReorg, SharedTransactionBetweenBranchesIsNotDoubleCounted) {
 
   Transaction shared_tx = make_signed_tx(alice, bob.address, 100);
 
-  Transaction losing_only_tx = make_signed_tx(alice, "someone-else", 25);
+  Transaction losing_only_tx = make_signed_tx(alice, "someone-else", 25, 0, 1);
   Block losing_block =
       make_block(genesis_hash, 1000, {shared_tx, losing_only_tx}, 1);
 
@@ -342,7 +343,7 @@ TEST(NodeReorg, MultiHopOrphanForkAppliesLedgerInOldestToNewestOrder) {
   Transaction tx2 = make_signed_tx(bob, alice.address, 100);
   Block block2 = make_block(block1.hash_, 1100, {tx2}, 1);
 
-  Transaction tx3 = make_signed_tx(alice, bob.address, 100);
+  Transaction tx3 = make_signed_tx(alice, bob.address, 100, 0, 1);
   Block block3 = make_block(block2.hash_, 1200, {tx3}, 1);
 
   node.orphans().add_orphan(Block(block1));
@@ -390,13 +391,14 @@ TEST(NodeReorg, ReorgFromForkPointDeeperThanGenesisPreservesCommonPrefix) {
   ASSERT_EQ(*node.ledger().get_balance(alice.address), 995u);
   ASSERT_EQ(*node.ledger().get_balance(bob.address), 5u);
 
-  Transaction losing_tx = make_signed_tx(alice, "carol-address", 50);
+  Transaction losing_tx = make_signed_tx(alice, "carol-address", 50, 0, 1);
   Block losing_tip = make_block(common_block2.hash_, 700, {losing_tx}, 1);
   ASSERT_TRUE(node.ledger().apply_transaction(losing_tx));
   node.blocks().add_block(Block(losing_tip));
   ASSERT_EQ(*node.ledger().get_balance(alice.address), 945u);
 
-  Transaction winning_tx = make_signed_tx(alice, bob.address, 200);
+  // The losing tip is undone first, so alice's next nonce is 1 again.
+  Transaction winning_tx = make_signed_tx(alice, bob.address, 200, 0, 1);
   Block winning_candidate =
       make_block(common_block2.hash_, 800, {winning_tx}, 3);
 

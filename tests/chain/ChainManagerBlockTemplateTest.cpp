@@ -67,8 +67,9 @@ TestWallet make_wallet() {
 }
 
 Transaction make_signed_tx(const TestWallet &sender, const str &recipient,
-                           uint64_t amount) {
-  Transaction tx(sender.address, recipient, amount, sender.keys.public_key, 0);
+                           uint64_t amount, uint64_t nonce = 0) {
+  Transaction tx(sender.address, recipient, amount, sender.keys.public_key, 0,
+                 nonce);
   tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
   return tx;
 }
@@ -154,7 +155,8 @@ TEST(ChainManagerBlockTemplate, RespectsMaxTxs) {
   f.manager.ledger_.set_balance(alice.address, 1000);
   for (int i = 0; i < 5; i++) {
     f.manager.mempool_.add_transaction(
-        make_signed_tx(alice, "carol-" + std::to_string(i), 10));
+        make_signed_tx(
+            alice, "carol-" + std::to_string(i), 10, static_cast<uint64_t>(i)));
   }
 
   EXPECT_EQ(f.manager.block_template(3).transactions.size(), 3u);

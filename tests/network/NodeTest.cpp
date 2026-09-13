@@ -309,8 +309,9 @@ TestWallet make_test_wallet() {
 }
 
 Transaction make_signed_test_tx(const TestWallet& sender, const str& recipient,
-                                 uint64_t amount, uint64_t fee = 0) {
-    Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee);
+                                 uint64_t amount, uint64_t fee = 0,
+                                 uint64_t nonce = 0) {
+    Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee, nonce);
     tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
     return tx;
 }
@@ -384,7 +385,8 @@ TEST(Node, TransactionsForBlockRespectsLimitAfterFiltering) {
 
     for (int i = 0; i < 5; ++i) {
         Transaction tx = make_signed_test_tx(alice, "recipient-address",
-                                              static_cast<uint64_t>(10 + i));
+                                              static_cast<uint64_t>(10 + i), 0,
+                                              static_cast<uint64_t>(i));
         server.mempool().add_transaction(tx);
     }
 

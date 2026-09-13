@@ -54,7 +54,7 @@ Block mine_on(const HashBytes &prev, uint64_t timestamp,
 
 Block mine_with_coinbase(const HashBytes &prev, uint64_t timestamp) {
   std::vector<Transaction> txs{
-      Transaction{kCoinbaseSender, kMiner, mining_reward, bytes{}, 0}};
+      Transaction{kCoinbaseSender, kMiner, mining_reward, bytes{}, 0, 0}};
   return mine_on(prev, timestamp, std::move(txs));
 }
 

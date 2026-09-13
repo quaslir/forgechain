@@ -57,7 +57,7 @@ TestWallet make_wallet() {
 Transaction signed_tx(const TestWallet &sender, const str &recipient,
                       uint64_t amount, uint64_t fee = 0) {
   Transaction tx(sender.address, recipient, amount, sender.keys.public_key,
-                 fee);
+                 fee, 0);
   tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
   return tx;
 }
@@ -82,7 +82,7 @@ TEST(ChainManagerSignature, RejectsUnsignedTransactionInBlock) {
   TestWallet miner = make_wallet();
   f.manager.set_balance(victim.address, 1000);
 
-  Transaction forged(victim.address, miner.address, 1000, bytes{}, 0);
+  Transaction forged(victim.address, miner.address, 1000, bytes{}, 0, 0);
 
   auto outcome = f.manager.submit_block(f.block_with({forged}));
 
@@ -113,7 +113,7 @@ TEST(ChainManagerSignature, RejectsPublicKeyThatIsNotTheSender) {
   f.manager.set_balance(victim.address, 1000);
 
   Transaction forged(victim.address, attacker.address, 1000,
-                     attacker.keys.public_key, 0);
+                     attacker.keys.public_key, 0, 0);
   forged.signature_ =
       sign(forged.serialize_for_signing(), attacker.keys.private_key);
 
@@ -152,7 +152,7 @@ TEST(ChainManagerSignature, CoinbaseNeedsNoSignature) {
   Fixture f;
   TestWallet miner = make_wallet();
   Transaction coinbase(kCoinbaseSender, miner.address, mining_reward, bytes{},
-                       0);
+                       0, 0);
 
   EXPECT_EQ(f.manager.submit_block(f.block_with({coinbase})).status,
             Status::Accepted);
@@ -165,8 +165,8 @@ TEST(ChainManagerSignature, ForgedTransactionAfterCoinbaseRollsBackTheBlock) {
   TestWallet miner = make_wallet();
   f.manager.set_balance(victim.address, 1000);
   Transaction coinbase(kCoinbaseSender, miner.address, mining_reward, bytes{},
-                       0);
-  Transaction forged(victim.address, miner.address, 1000, bytes{}, 0);
+                       0, 0);
+  Transaction forged(victim.address, miner.address, 1000, bytes{}, 0, 0);
 
   auto outcome = f.manager.submit_block(f.block_with({coinbase, forged}));
 
@@ -184,7 +184,7 @@ TEST(ChainManagerSignature, ValidTransactionBeforeForgedOneIsRolledBack) {
   f.manager.set_balance(victim.address, 1000);
 
   Transaction good = signed_tx(alice, "bob", 100);
-  Transaction forged(victim.address, miner.address, 500, bytes{}, 0);
+  Transaction forged(victim.address, miner.address, 500, bytes{}, 0, 0);
 
   EXPECT_EQ(f.manager.submit_block(f.block_with({good, forged})).status,
             Status::Rejected);
@@ -203,7 +203,7 @@ TEST(ChainManagerSignature, ForgedTransactionInForkBranchIsRejected) {
   Block honest = mine_block(1, genesis, kNow, kDifficulty, {});
   ASSERT_EQ(f.manager.submit_block(honest).status, Status::Accepted);
 
-  Transaction forged(victim.address, miner.address, 1000, bytes{}, 0);
+  Transaction forged(victim.address, miner.address, 1000, bytes{}, 0, 0);
   Block b1 = mine_block(1, genesis, kNow + 1, kDifficulty, {});
   Block b2 = mine_block(1, b1.hash_, kNow + 2, kDifficulty, {forged});
   f.manager.submit_block(b1);

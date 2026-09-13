@@ -46,7 +46,7 @@ TestWallet make_test_wallet() {
 
 Transaction make_signed_test_tx(const TestWallet &sender, const str &recipient,
                                  uint64_t amount, uint64_t fee = 0) {
-  Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee);
+  Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee, 0);
   tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
   return tx;
 }
@@ -163,7 +163,7 @@ TEST(RpcServer, SubmitTxWithInvalidSignatureIsAcceptedByRpcButRejectedByMempool)
   TestWallet mallory = make_test_wallet();
   node.ledger().set_balance(alice.address, 1000);
 
-  Transaction tx(alice.address, "bob-address", 100, alice.keys.public_key, 0);
+  Transaction tx(alice.address, "bob-address", 100, alice.keys.public_key, 0, 0);
   tx.signature_ = sign(tx.serialize_for_signing(), mallory.keys.private_key);
   str hex = to_hex(tx.serialize());
   RpcServer server = make_server(node);
