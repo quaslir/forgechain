@@ -2,6 +2,7 @@
 #include "consensus/ConsensusParams.hpp"
 #include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
+#include "core/BlockLocator.hpp"
 #include "core/Blockchain.hpp"
 #include "core/ForkResolution.hpp"
 #include "core/Ledger.hpp"
@@ -399,5 +400,27 @@ BlockTemplate ChainManager::block_template(size_t max_txs) const {
 uint64_t ChainManager::next_nonce(const crypto::str &address) const {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
   return ledger_.next_nonce(address);
+}
+
+
+std::vector<crypto::HashBytes> ChainManager::locator() const {
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  return core::build_locator(blockchain_);
+}
+std::vector<core::Block> ChainManager::blocks_after_locator(const std::vector<crypto::HashBytes>& locator, size_t limit) const {
+      std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+      auto match = core::find_locator_match(blockchain_, locator);
+      if(!match.has_value()) return {};
+      size_t from = *match + 1;
+            size_t size = blockchain_.size();
+      if(from >= size) return {};
+      std::vector<core::Block> blocks;
+            size_t end = std::min(size, from + limit);
+      blocks.reserve(end - from);
+
+      for(size_t i = from; i < end;  i++) {
+          blocks.push_back(blockchain_.at(i));
+      }
+      return blocks;
 }
 } // namespace forgechain::chain

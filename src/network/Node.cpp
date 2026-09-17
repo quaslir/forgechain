@@ -208,7 +208,7 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
   // sync between two peers
   if (my_height < incoming_info->chain_height) {
     if (!send_msg(raw_peer, MessageType::GETBLOCKS,
-                  serialize_getblocks(my_height)))
+                  serialize_getblocks(chain_.locator())))
       return false;
   }
   PeerAddress candidate{.host = host, .port = incoming_info->listen_port};
@@ -437,7 +437,7 @@ void Node::handle_getblocks(Peer *peer, const crypto::bytes &payload) {
   auto from_height_container = deserialize_getblocks(payload);
   if (!from_height_container.has_value())
     return;
-  auto blocks = chain_.blocks_from(static_cast<size_t>(*from_height_container),
+  auto blocks = chain_.blocks_after_locator(*from_height_container,
                                    MAX_BLOCKS_PER_RESPONSE);
   for (const auto &block : blocks) {
     send_msg(peer, MessageType::BLOCK, block.serialize());
@@ -549,7 +549,7 @@ void Node::request_sync() {
 
   auto target = targets[sync_.sync_cursor++ % targets.size()];
   send_msg(target.get(), MessageType::GETBLOCKS,
-           serialize_getblocks(chain_.chain_height()));
+           serialize_getblocks(chain_.locator()));
 }
 bool Node::wait_or_stop(std::chrono::milliseconds duration) {
   std::unique_lock<std::mutex> lock(shutdown_mutex_);

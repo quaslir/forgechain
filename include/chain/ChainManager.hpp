@@ -75,6 +75,11 @@ public:
   transactions_for_block(size_t limit) const;
   [[nodiscard]] uint64_t next_nonce(const crypto::str &address) const;
 
+  [[nodiscard]] std::vector<crypto::HashBytes> locator() const;
+  [[nodiscard]] std::vector<core::Block>
+  blocks_after_locator(const std::vector<crypto::HashBytes> &locator,
+                       size_t limit) const;
+
 private:
   std::vector<core::Transaction> select_transactions(
       size_t limit) const; // MUST be called with chain_mutex_!!!
