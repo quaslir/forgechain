@@ -11,7 +11,8 @@
 #include <utility>
 namespace forgechain::core {
 Transaction::Transaction(str sender, str recipient, uint64_t amount,
-                         core::bytes sender_public_key, uint64_t fee, uint64_t nonce)
+                         core::bytes sender_public_key, uint64_t fee,
+                         uint64_t nonce)
     : sender_(std::move(sender)), recipient_(std::move(recipient)),
       sender_public_key_(std::move(sender_public_key)), amount_(amount),
       fee_(fee), nonce_(nonce) {}
@@ -110,8 +111,9 @@ Transaction::deserialize(const crypto::bytes &payload) {
     return std::nullopt;
   auto fee = *reinterpret_cast<const uint64_t *>(payload.data() + offset);
   offset += sizeof(uint64_t);
-  if(payload.size() < offset + sizeof(uint64_t)) return std::nullopt;
-  auto nonce = *reinterpret_cast<const uint64_t*>(payload.data() + offset);
+  if (payload.size() < offset + sizeof(uint64_t))
+    return std::nullopt;
+  auto nonce = *reinterpret_cast<const uint64_t *>(payload.data() + offset);
   offset += sizeof(nonce);
 
   if (payload.size() < offset + sizeof(uint32_t))
@@ -130,7 +132,8 @@ Transaction::deserialize(const crypto::bytes &payload) {
   if (payload.size() != offset)
     return std::nullopt;
 
-  Transaction tx{sender, recipient, amount, std::move(sender_public_key), fee, nonce};
+  Transaction tx{sender, recipient, amount, std::move(sender_public_key),
+                 fee,    nonce};
   tx.signature_ = std::move(signature);
   return tx;
 }
@@ -143,10 +146,13 @@ bool Transaction::operator==(const Transaction &tx) const {
          fee_ == tx.fee_ && nonce_ == tx.nonce_;
 }
 
-bool has_valid_signature(const Transaction&tx) {
-    if(tx.sender_ == kCoinbaseSender) return false;
-    if(crypto::derive_address(tx.sender_public_key_) != tx.sender_) return false;
-    return crypto::verify(tx.serialize_for_signing(), tx.signature_, tx.sender_public_key_);
+bool has_valid_signature(const Transaction &tx) {
+  if (tx.sender_ == kCoinbaseSender)
+    return false;
+  if (crypto::derive_address(tx.sender_public_key_) != tx.sender_)
+    return false;
+  return crypto::verify(tx.serialize_for_signing(), tx.signature_,
+                        tx.sender_public_key_);
 }
 
 } // namespace forgechain::core

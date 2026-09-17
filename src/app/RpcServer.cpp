@@ -84,6 +84,12 @@ crypto::str RpcServer::handle_command(const crypto::str &line) {
       return std::to_string(*balance);
     }
     return "UNKNOWN";
+  } else if (command == "GETNONCE") {
+    crypto::str address{};
+    iss >> address;
+    if (address.empty())
+      return "ERROR_EMPTY_ADDRESS";
+    return std::to_string(chain_.next_nonce(address));
   } else if (command == "SUBMITTX") {
     crypto::str hex;
     iss >> hex;

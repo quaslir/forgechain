@@ -132,8 +132,13 @@ not for unambiguous decoding.
 | `public_key_len` | 4 bytes | `uint32` | Byte length of `public_key`. |
 | `public_key` | `public_key_len` bytes | raw bytes | `Transaction::sender_public_key_`. The receiver verifies that it hashes to `sender` and that `signature` is valid under it. Empty for the coinbase transaction. |
 | `fee` | 8 bytes | `uint64` | `Transaction::fee_`. Collected by the miner of the block that includes the transaction. |
+| `nonce` | 8 bytes | `uint64` | `Transaction::nonce_`: how many transactions the sender had already made when this one was created. Must equal the sender's current counter — see §8.6. Always `0` for the coinbase, where it is ignored. |
 | `signature_len` | 4 bytes | `uint32` | Byte length of `signature`. |
 | `signature` | `signature_len` bytes | raw bytes | `Transaction::signature_` (DER-encoded ECDSA signature, variable length — see `crypto::sign`). Empty for the coinbase transaction. |
+
+The nonce is part of the signed bytes, so it cannot be altered in flight,
+and it is part of the transaction hash, so two otherwise identical payments
+by the same sender are distinct transactions.
 
 Every variable-length field is length-prefixed, so the encoding is
 unambiguously parseable — e.g. `sender="ab", recipient="c"` is
@@ -663,9 +668,9 @@ block.
      block did the work it declares; this step proves it declares the
      work consensus requires. Only together do they mean anything.
 4. **Transactions.** Every transaction applies to the ledger in order:
-   valid signature, and the sender can afford `amount + fee`. If any
-   transaction fails, the whole block is rejected and the ledger is left
-   untouched.
+   valid signature (§8.6), correct nonce (§8.6), and the sender can afford
+   `amount + fee`. If any transaction fails, the whole block is rejected and
+   the ledger is left untouched.
 
 For a block extending the tip, "the chain it builds on" is the node's
 current chain. For a block on a competing branch, see §8.5.
@@ -701,7 +706,39 @@ arbitrary number of honest main-chain blocks behind a shallow common
 ancestor. With it, a branch can only accumulate work at the rate the
 chain's own history allows.
 
-### 8.6 Producing a block
+### 8.6 Transaction validity
+
+A transaction in a block is valid only if all of the following hold. The
+coinbase (sender `kCoinbaseSender`) is exempt from the first two.
+
+1. **Authenticity.** `sender_public_key` hashes to `sender`, and `signature`
+   verifies over the signed bytes (§3.4) under that key. This is checked
+   wherever a transaction reaches the ledger: a block extending the tip, a
+   block adopted by a reorganization, and the mempool.
+2. **Nonce.** `nonce` equals the sender's current counter. The counter starts
+   at 0 for every address, advances by one each time a transaction from that
+   sender is applied, and is restored when one is undone by a reorganization.
+   Receiving funds never advances it.
+3. **Funds.** The sender's balance covers `amount + fee`.
+
+The nonce is what makes a signature valid at exactly one point in its
+sender's history. Without it, a signed transaction stays valid forever:
+anyone who saw it could put it into a later block and debit the sender
+again, repeatedly. It also gives two otherwise identical payments distinct
+hashes, so a sender can pay the same recipient the same amount twice.
+
+Strict equality means no gaps: transactions from one sender are applied in
+the order that sender created them. A transaction whose nonce is ahead of
+the counter is not invalid forever — it becomes valid once the ones before
+it are applied — so it is rejected rather than treated as malformed.
+
+Because the counter lives in the ledger, it only advances when a
+transaction is mined, not when it enters the mempool. A sender that issues
+two transactions before the first is mined gives both the same nonce, and
+the second is rejected. The RPC `GETNONCE` command reports the current
+counter, which is what a wallet asks for before signing.
+
+### 8.7 Producing a block
 
 A miner builds a block from a template taken under one consistent view of
 the chain (`ChainManager::block_template`):
@@ -724,7 +761,7 @@ the miner. A miner that paused between blocks would make the network
 look slower than it is, and the adjustment would drive difficulty down to
 `min_difficulty`.
 
-### 8.7 Known limitations
+### 8.8 Known limitations
 
 - **Stale mining is not interrupted.** A miner that receives a new tip
   while working on a block finishes the stale block before starting on
@@ -736,5 +773,21 @@ look slower than it is, and the adjustment would drive difficulty down to
   network faces untrusted peers.
 - **Time-warp attacks** beyond what the median and the per-epoch clamp
   prevent are not addressed.
+- **A sender cannot have two transactions in flight.** The nonce counter
+  advances on mining, not on submission, so a second transaction created
+  before the first is mined reuses the nonce and is rejected. A wallet that
+  tracked its own pending transactions, or a node that reported the counter
+  including the mempool, would lift this.
+- **The mempool does not check nonces against the ledger.** A transaction
+  whose nonce is already spent is accepted into the mempool and occupies
+  space until it is evicted, even though it can never be mined.
+- **Divergence deeper than `kMaxForkDepth` cannot be repaired.** Two nodes
+  whose chains share only an ancestor more than 100 blocks back never
+  reconcile: the walk back in §7.3 gives up at the cap, so neither adopts
+  the other's chain however much heavier it is, and both keep extending
+  their own history. This is reachable in practice — a node restarted from
+  a stored chain while the network moved on will sit at its stored height
+  forever. A hash-based `GETBLOCKS` locator (§3.5) plus a dedicated
+  catch-up path is required to fix it.
 - **Changing any rule in this section is a hard fork.** Chains and
   databases built under earlier rules are not valid under later ones.
