@@ -5,6 +5,7 @@
 #include "core/Mempool.hpp"
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
+#include "crypto/Hash.hpp"
 #include "network/Handshake.hpp"
 #include "network/Node.hpp"
 #include "network/NodeId.hpp"
@@ -152,6 +153,16 @@ void Orchestrator::run_command_loop() {
       handle_status_command();
     } else if (command == "addrbook") {
       handle_addrbook_command();
+    } else if (command == "block") {
+      crypto::str height_str{};
+      iss >> height_str;
+      auto height = parse_number(height_str);
+      if (!height.has_value()) {
+        std::cerr << "usage: block <height>" << std::endl;
+        continue;
+      }
+
+      handle_block_command(static_cast<size_t>(*height));
     } else if (command == "set") {
       crypto::str subcommand{};
       iss >> subcommand;
@@ -265,6 +276,9 @@ void Orchestrator::handle_help_command() {
             << std::endl;
   std::cout << "  height                    show current chain height"
             << std::endl;
+  std::cout << "  block <height>            show full contents of the block at "
+               "that height"
+            << std::endl;
   std::cout << "  peers                     list connected peers (host:port, "
                "direction)"
             << std::endl;
@@ -343,6 +357,58 @@ void Orchestrator::handle_ledger_command() {
   std::cout << balances.size() << " account(s):" << std::endl;
   for (const auto &[address, amount] : balances) {
     std::cout << "  " << address << " : " << amount << std::endl;
+  }
+}
+
+void Orchestrator::handle_block_command(size_t height) {
+  if (height >= chain_manager_.chain_height()) {
+    std::cout << "no block at height " << height << " (chain height is "
+              << chain_manager_.chain_height() << ")" << std::endl;
+    return;
+  }
+  core::Block block = chain_manager_.block_at(height);
+
+  auto as_utc = [](uint64_t seconds) {
+    auto time = static_cast<std::time_t>(seconds);
+    std::tm tm{};
+    gmtime_r(&time, &tm);
+    char buffer[32];
+    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm);
+    return crypto::str(buffer);
+  };
+
+  std::cout << "height:     " << height << std::endl;
+  std::cout << "hash:       " << crypto::to_hex(block.hash_) << std::endl;
+  std::cout << "prev:       " << crypto::to_hex(block.prev_hash_) << std::endl;
+  std::cout << "merkle:     " << crypto::to_hex(block.merkle_root_)
+            << std::endl;
+  std::cout << "timestamp:  " << block.timestamp_ << "  ("
+            << as_utc(block.timestamp_) << " UTC)" << std::endl;
+  std::cout << "difficulty: " << block.difficulty_ << " bits" << std::endl;
+  std::cout << "nonce:      " << block.nonce_ << std::endl;
+  std::cout << "work:       " << block.block_work() << "  (cumulative "
+            << block.cumulative_work_ << ")" << std::endl;
+  std::cout << "version:    " << block.version_ << std::endl;
+
+  if (block.transactions_.empty()) {
+    std::cout << "transactions: (none)" << std::endl;
+    return;
+  }
+
+  std::cout << "transactions: " << block.transactions_.size() << std::endl;
+  for (size_t i = 0; i < block.transactions_.size(); i++) {
+    const auto &tx = block.transactions_[i];
+    bool is_coinbase = tx.sender_ == core::kCoinbaseSender;
+    std::cout << "  [" << i << "] " << crypto::to_hex(tx.compute_hash())
+              << std::endl;
+    std::cout << "      " << tx.sender_ << " -> " << tx.recipient_ << std::endl;
+    std::cout << "      amount " << tx.amount_ << ", fee " << tx.fee_;
+    if (is_coinbase) {
+      std::cout << "  (coinbase)";
+    } else {
+      std::cout << ", nonce " << tx.nonce_;
+    }
+    std::cout << std::endl;
   }
 }
 

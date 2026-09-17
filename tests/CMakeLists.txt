@@ -41,6 +41,7 @@ add_forgechain_test_executable(core_tests
     core/OrphanPoolTest.cpp
     core/ForkResolutionTest.cpp
     core/TransactionFeeTest.cpp
+    core/BlockLocatorTest.cpp
 )
 
 add_forgechain_test_executable(consensus_tests

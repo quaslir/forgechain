@@ -39,6 +39,7 @@ independent of mining/networking:
 | `balance <address>` | Print the current `Ledger` balance for `<address>`, or `unknown address` if it has none. |
 | `ledger` | Print every account the `Ledger` knows, with its balance. The first line is the account count (`N account(s):`), followed by one `address : amount` line per account. Order is unspecified and may differ between calls. Prints `(ledger is empty)` if no account has a balance yet. |
 | `height` | Print the current chain height. |
+| `block <height>` | Print the full contents of the block at `<height>`: its hash, the hash of its parent, merkle root, timestamp (raw and as UTC), difficulty, nonce, its own and the chain's cumulative work, and every transaction in it with hash, sender, recipient, amount, fee and nonce. Heights start at `0` (genesis); a height at or above the current chain height prints a message instead. Comparing the hash at the same height on two nodes is the quickest way to tell whether they are on the same chain. |
 | `peers` | List currently connected P2P peers, one per line, as `host:port` followed by direction: `(out)` for a connection this node dialed, `(in)` for one it accepted. Prints `(no peers connected)` if there are none. |
 | `addrbook` | List every peer address this node knows, whether or not it is currently connected. Each entry shows `host:port` and its state: `verified` -- a successful outbound dial has confirmed the address is reachable, so it may be gossiped to other peers -- or `unverified (N fails)`, meaning the address is known but not yet confirmed, with its failed-dial count. Prints `(address book is empty)` if there are none. |
 | `mempool` | List pending transactions in the mempool, each with sender, recipient, amount, and fee. Prints `(mempool is empty)` if there are none. |
@@ -318,6 +319,31 @@ sent
   <address-from-wallet> : 275
   <some-other-address> : 25
 ```
+
+### Example: comparing two nodes' chains
+
+```
+# On each node, at a height both have passed:
+>>> block 41000
+height:     41000
+hash:       7b3c...e91a
+prev:       0f42...88d3
+merkle:     a115...6c07
+timestamp:  1757600441  (2025-09-11 14:20:41 UTC)
+difficulty: 19 bits
+nonce:      338211
+work:       524288  (cumulative 21487681536)
+version:    1
+transactions: 1
+  [0] 4d9e...b210
+      COINBASE -> 62c918e0d9a01a414f9223e8d35f93371fcc85df29ecc1aba2407e11808c3094
+      amount 50, fee 0  (coinbase)
+```
+
+Same hash on both nodes means the chains agree up to that height. Different
+hashes mean they diverged somewhere at or below it -- and if the fork point
+is more than 100 blocks back, they cannot reconcile on their own (see
+`protocol.md` §8.8).
 
 ### Example: inspecting peer discovery
 

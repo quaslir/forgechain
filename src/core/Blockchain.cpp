@@ -14,7 +14,9 @@ using forgechain::core::Block;
 using forgechain::crypto::HashBytes;
 Blockchain::Blockchain() {
   Block genesis{1, HashBytes{}, 0, {}};
-  blocks_.push_back(genesis);
+  genesis.hash_ = genesis.compute_hash();
+  height_by_hash_[genesis.hash_] = 0;
+  blocks_.push_back(std::move(genesis));
 }
 
 void Blockchain::add_block(Block &&block) {
@@ -22,33 +24,26 @@ void Blockchain::add_block(Block &&block) {
       size() > 0 ? blocks_.back().cumulative_work_ : 0;
   uint64_t current_cumulative_work = block.block_work() + prev_cumulative_work;
   block.cumulative_work_ = current_cumulative_work;
+  height_by_hash_[block.hash_] = blocks_.size();
   blocks_.push_back(std::move(block));
 }
 bool Blockchain::has_block(const crypto::HashBytes &hash) const {
-  auto it =
-      std::find_if(blocks_.begin(), blocks_.end(),
-                   [&hash](const Block &block) { return block.hash_ == hash; });
-
-  return it != blocks_.end();
+  return height_by_hash_.contains(hash);
 }
 
 std::optional<Block> Blockchain::find(const crypto::HashBytes &hash) const {
-  for (const auto &block : blocks_) {
-    if (block.hash_ == hash) {
-      return block;
-    }
-  }
-  return std::nullopt;
+  auto index = find_height(hash);
+  if (!index.has_value())
+    return std::nullopt;
+
+  return blocks_[*index];
 }
 std::optional<size_t>
 Blockchain::find_height(const crypto::HashBytes &hash) const {
-  for (size_t height = 0; height < blocks_.size(); height++) {
-    if (blocks_[height].hash_ == hash) {
-      return height;
-    }
-  }
+  if (!has_block(hash))
+    return std::nullopt;
 
-  return std::nullopt;
+  return height_by_hash_.at(hash);
 }
 
 const Block &Blockchain::at(size_t height) const { return blocks_.at(height); }
@@ -95,6 +90,9 @@ std::optional<std::vector<Block>> Blockchain::reorganize_to(ForkChain &&fork) {
     return std::nullopt;
   std::vector<Block> discarded(blocks_.begin() + static_cast<long>(*height) + 1,
                                blocks_.end());
+  for (const auto &block : discarded) {
+    height_by_hash_.erase(block.hash_);
+  }
   blocks_.erase(blocks_.begin() + static_cast<long>(*height) + 1,
                 blocks_.end());
   for (auto &&block : fork.blocks) {

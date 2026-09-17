@@ -7,6 +7,7 @@
 #include "crypto/CommonTypes.hpp"
 #include "core/ForkResolution.hpp"
 #include <utility>
+#include <optional>
 #include "core/Transaction.hpp"
 using namespace forgechain::core;
 using forgechain::crypto::HashBytes;
@@ -15,8 +16,10 @@ namespace {
 HashBytes zeroHash() {
     return HashBytes{};
 }
-}
+Block make_child(const Block &parent, uint64_t timestamp) {
+    return Block{1, parent.hash_, timestamp, {}};
 
+}
 
 TEST(Blockchain, StartsWithExactlyOneBlock) {
     Blockchain chain;
@@ -478,4 +481,116 @@ TEST(Blockchain, ClassifyNewBlockRejectsMisplacedCoinbaseEvenWhenAlsoAFork) {
     block.hash_ = block.compute_hash();
 
     EXPECT_EQ(chain.classify_new_block(block), BlockValidation::Invalid);
+}
+
+
+void expect_index_matches_chain(const Blockchain &chain) {
+    for (size_t height = 0; height < chain.size(); ++height) {
+        const HashBytes &hash = chain.at(height).hash_;
+        EXPECT_TRUE(chain.has_block(hash)) << "missing at height " << height;
+        EXPECT_EQ(chain.find_height(hash), height);
+        ASSERT_TRUE(chain.find(hash).has_value());
+        EXPECT_EQ(chain.find(hash)->hash_, hash);
+    }
+}
+
+}  // namespace
+
+TEST(Blockchain, GenesisIsIndexedByTheConstructor) {
+    Blockchain chain;
+
+    EXPECT_TRUE(chain.has_block(chain.at(0).hash_));
+    EXPECT_EQ(chain.find_height(chain.at(0).hash_), 0u);
+}
+
+TEST(Blockchain, AddedBlocksAreIndexedAtTheirHeight) {
+    Blockchain chain;
+    for (uint64_t i = 1; i <= 20; ++i) {
+        chain.add_block(make_child(chain.latest(), 1700000000 + i));
+    }
+
+    expect_index_matches_chain(chain);
+}
+
+TEST(Blockchain, UnknownHashIsNotFound) {
+    Blockchain chain;
+    chain.add_block(make_child(chain.latest(), 1700000001));
+    Block never_added = make_child(chain.latest(), 1700009999);
+
+    EXPECT_FALSE(chain.has_block(never_added.hash_));
+    EXPECT_EQ(chain.find_height(never_added.hash_), std::nullopt);
+    EXPECT_EQ(chain.find(never_added.hash_), std::nullopt);
+    EXPECT_FALSE(chain.has_block(zeroHash()));
+}
+
+TEST(Blockchain, ReorgDropsTheLosingBranchFromTheIndex) {
+    Blockchain chain;
+    Block fork_point = make_child(chain.latest(), 1700000001);
+    chain.add_block(Block(fork_point));
+    Block losing1 = make_child(chain.latest(), 1700000002);
+    chain.add_block(Block(losing1));
+    Block losing2 = make_child(chain.latest(), 1700000003);
+    chain.add_block(Block(losing2));
+
+    Block winning1 = make_child(fork_point, 1700000010);
+    Block winning2 = make_child(winning1, 1700000011);
+    Block winning3 = make_child(winning2, 1700000012);
+    ForkChain fork{.blocks = {winning1, winning2, winning3},
+                   .common_ancestor = fork_point};
+    ASSERT_TRUE(chain.reorganize_to(std::move(fork)).has_value());
+
+    EXPECT_FALSE(chain.has_block(losing1.hash_));
+    EXPECT_FALSE(chain.has_block(losing2.hash_));
+    EXPECT_EQ(chain.find_height(losing1.hash_), std::nullopt);
+    expect_index_matches_chain(chain);
+}
+
+TEST(Blockchain, ReorgReindexesHeightsThatChangedOwner) {
+    Blockchain chain;
+    Block fork_point = make_child(chain.latest(), 1700000001);
+    chain.add_block(Block(fork_point));
+    Block losing = make_child(chain.latest(), 1700000002);
+    chain.add_block(Block(losing));
+    ASSERT_EQ(chain.find_height(losing.hash_), 2u);
+
+    Block winning1 = make_child(fork_point, 1700000010);
+    Block winning2 = make_child(winning1, 1700000011);
+    ForkChain fork{.blocks = {winning1, winning2},
+                   .common_ancestor = fork_point};
+    ASSERT_TRUE(chain.reorganize_to(std::move(fork)).has_value());
+
+    EXPECT_EQ(chain.find_height(winning1.hash_), 2u);
+    EXPECT_EQ(chain.find_height(winning2.hash_), 3u);
+    expect_index_matches_chain(chain);
+}
+
+TEST(Blockchain, RepeatedReorgsKeepTheIndexConsistent) {
+    Blockchain chain;
+    Block fork_point = make_child(chain.latest(), 1700000001);
+    chain.add_block(Block(fork_point));
+
+    for (uint64_t round = 1; round <= 5; ++round) {
+        Block b1 = make_child(fork_point, 1700000100 * round);
+        Block b2 = make_child(b1, 1700000100 * round + 1);
+        ForkChain fork{.blocks = {b1, b2}, .common_ancestor = fork_point};
+        ASSERT_TRUE(chain.reorganize_to(std::move(fork)).has_value())
+            << "round " << round;
+        EXPECT_EQ(chain.size(), 4u) << "round " << round;
+        expect_index_matches_chain(chain);
+    }
+}
+
+TEST(Blockchain, FailedReorgLeavesTheIndexUntouched) {
+    Blockchain chain;
+    chain.add_block(make_child(chain.latest(), 1700000001));
+    chain.add_block(make_child(chain.latest(), 1700000002));
+
+    Block stranger = make_child(chain.latest(), 1700009999);
+    Block child = make_child(stranger, 1700009998);
+    ForkChain fork{.blocks = {child}, .common_ancestor = stranger};
+    EXPECT_EQ(chain.reorganize_to(std::move(fork)), std::nullopt);
+
+    EXPECT_FALSE(chain.has_block(child.hash_));
+    EXPECT_EQ(chain.size(), 3u);
+    expect_index_matches_chain(chain);
 }
