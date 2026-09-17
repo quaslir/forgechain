@@ -18,8 +18,10 @@ public:
   bool reverse_transaction(const Transaction &tx);
   [[nodiscard]] std::vector<std::pair<crypto::str, uint64_t>>
   all_balances() const;
+  [[nodiscard]] uint64_t next_nonce(const str &address) const;
 
 private:
   std::unordered_map<str, uint64_t> balances_;
+  std::unordered_map<str, uint64_t> nonces_;
 };
 } // namespace forgechain::core

@@ -29,6 +29,8 @@ public:
   height(const RpcConfiguration &rpc_config) const;
   [[nodiscard]] std::optional<crypto::str>
   peers(const RpcConfiguration &rpc_config) const;
+  [[nodiscard]] std::optional<crypto::str>
+  next_nonce(const RpcConfiguration &rpc_config) const;
 
 private:
   static crypto::str read_from(network::TcpSocket socket);

@@ -24,7 +24,7 @@ Wallet make_wallet() {
 
 Transaction make_signed_tx(const Wallet &sender, const str &recipient,
                             uint64_t amount, uint64_t fee) {
-  Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee);
+  Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee, 0);
   tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
   return tx;
 }

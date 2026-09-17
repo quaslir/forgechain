@@ -1,4 +1,5 @@
 #include "app/Wallet.hpp"
+#include "app/ParseNumber.hpp"
 #include "core/Transaction.hpp"
 #include "crypto/Address.hpp"
 #include "crypto/CommonTypes.hpp"
@@ -72,7 +73,15 @@ crypto::str Wallet::read_from(network::TcpSocket socket) {
 std::optional<bool> Wallet::send(const crypto::str &recipient, uint64_t amount,
                                  uint64_t fee,
                                  const RpcConfiguration &rpc_config) const {
-  core::Transaction tx{address_, recipient, amount, keys_.public_key, fee};
+  auto nonce_str = next_nonce(rpc_config);
+  if (!nonce_str.has_value())
+    return std::nullopt;
+  auto nonce = app::parse_number(*nonce_str);
+  if (!nonce.has_value())
+    return std::nullopt;
+  core::Transaction tx{address_, recipient,
+                       amount,   keys_.public_key,
+                       fee,      static_cast<uint64_t>(*nonce)};
   tx.signature_ = crypto::sign(tx.serialize_for_signing(), keys_.private_key);
   network::TcpSocket socket =
       network::connect_to(rpc_config.address.host, rpc_config.address.port);
@@ -144,4 +153,22 @@ Wallet::peers(const RpcConfiguration &rpc_config) const {
 }
 
 const crypto::str &Wallet::address() const { return address_; }
+
+std::optional<crypto::str>
+Wallet::next_nonce(const RpcConfiguration &rpc_config) const {
+  network::TcpSocket socket =
+      network::connect_to(rpc_config.address.host, rpc_config.address.port);
+  if (!socket.is_valid()) {
+    return std::nullopt;
+  }
+
+  crypto::str command = rpc_config.rpc_api_key + " GETNONCE " + address_ + '\n';
+
+  if (!network::send_exact(socket.fd(),
+                           reinterpret_cast<const uint8_t *>(command.data()),
+                           command.size())) {
+    return std::nullopt;
+  }
+  return read_from(std::move(socket));
+}
 } // namespace forgechain::app

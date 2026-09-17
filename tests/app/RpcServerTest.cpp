@@ -46,7 +46,7 @@ TestWallet make_test_wallet() {
 
 Transaction make_signed_test_tx(const TestWallet &sender, const str &recipient,
                                  uint64_t amount, uint64_t fee = 0) {
-  Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee);
+  Transaction tx(sender.address, recipient, amount, sender.keys.public_key, fee, 0);
   tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
   return tx;
 }
@@ -163,7 +163,7 @@ TEST(RpcServer, SubmitTxWithInvalidSignatureIsAcceptedByRpcButRejectedByMempool)
   TestWallet mallory = make_test_wallet();
   node.ledger().set_balance(alice.address, 1000);
 
-  Transaction tx(alice.address, "bob-address", 100, alice.keys.public_key, 0);
+  Transaction tx(alice.address, "bob-address", 100, alice.keys.public_key, 0, 0);
   tx.signature_ = sign(tx.serialize_for_signing(), mallory.keys.private_key);
   str hex = to_hex(tx.serialize());
   RpcServer server = make_server(node);
@@ -270,4 +270,59 @@ TEST(RpcServer, EmptyTokenAfterBeingSetDisablesAuthenticationAgain) {
 
   server.set_api_key(str(""));
   EXPECT_EQ(server.handle_command("HEIGHT"), "1");
+}
+
+TEST(RpcServer, GetNonceReturnsZeroForUnknownAddress) {
+  TestNode node;
+  RpcServer server = make_server(node);
+
+  EXPECT_EQ(server.handle_command("GETNONCE nobody-address"), "0");
+}
+
+TEST(RpcServer, GetNonceAdvancesAfterAnAppliedTransaction) {
+  TestNode node;
+  TestWallet alice = make_test_wallet();
+  node.ledger().set_balance(alice.address, 500);
+  RpcServer server = make_server(node);
+  ASSERT_EQ(server.handle_command("GETNONCE " + alice.address), "0");
+
+  ASSERT_TRUE(node.ledger().apply_transaction(
+      make_signed_test_tx(alice, "bob-address", 100)));
+
+  EXPECT_EQ(server.handle_command("GETNONCE " + alice.address), "1");
+}
+
+TEST(RpcServer, GetNonceIsPerAddress) {
+  TestNode node;
+  TestWallet alice = make_test_wallet();
+  TestWallet bob = make_test_wallet();
+  node.ledger().set_balance(alice.address, 500);
+  node.ledger().set_balance(bob.address, 500);
+  ASSERT_TRUE(node.ledger().apply_transaction(
+      make_signed_test_tx(alice, bob.address, 100)));
+  RpcServer server = make_server(node);
+
+  EXPECT_EQ(server.handle_command("GETNONCE " + alice.address), "1");
+  EXPECT_EQ(server.handle_command("GETNONCE " + bob.address), "0")
+      << "receiving funds must not advance the recipient's nonce";
+}
+
+TEST(RpcServer, GetNonceWithoutAddressIsAnError) {
+  TestNode node;
+  RpcServer server = make_server(node);
+
+  EXPECT_EQ(server.handle_command("GETNONCE"), "ERROR_EMPTY_ADDRESS");
+  EXPECT_EQ(server.handle_command("GETNONCE   "), "ERROR_EMPTY_ADDRESS");
+}
+
+TEST(RpcServer, GetNonceRequiresTheApiKeyWhenOneIsSet) {
+  TestNode node;
+  RpcServer server = make_server(node);
+  server.set_api_key(str("secret123"));
+
+  EXPECT_EQ(server.handle_command("GETNONCE alice-address"),
+            "ERROR unauthorized");
+  EXPECT_EQ(server.handle_command("wrongtoken GETNONCE alice-address"),
+            "ERROR unauthorized");
+  EXPECT_EQ(server.handle_command("secret123 GETNONCE alice-address"), "0");
 }

@@ -100,9 +100,12 @@ void Orchestrator::mining_loop() {
       for (const auto &tx : tmpl.transactions) {
         fees_total += tx.fee_;
       }
-      core::Transaction coinbase{core::kCoinbaseSender, config_.reward_address,
+      core::Transaction coinbase{core::kCoinbaseSender,
+                                 config_.reward_address,
                                  consensus::mining_reward + fees_total,
-                                 crypto::bytes{}, 0};
+                                 crypto::bytes{},
+                                 0,
+                                 0};
       tmpl.transactions.insert(tmpl.transactions.begin(), coinbase);
     }
     state_lock.unlock();

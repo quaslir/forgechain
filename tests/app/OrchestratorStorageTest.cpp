@@ -54,7 +54,7 @@ Wallet make_wallet() {
 Transaction make_signed_tx(const Wallet &sender, const str &recipient,
                             uint64_t amount, uint64_t fee = 0) {
   Transaction tx(sender.address, recipient, amount, sender.keys.public_key,
-                 fee);
+                 fee, 0);
   tx.signature_ = sign(tx.serialize_for_signing(), sender.keys.private_key);
   return tx;
 }
@@ -211,7 +211,7 @@ TEST(Orchestrator, BalancesSurviveDestructionAndReconstruction) {
       Orchestrator orch(config);
 
       for (int i = 0; i < 6; i++) {
-        Transaction coinbase{kCoinbaseSender, alice.address, 50, bytes{}, 0};
+        Transaction coinbase{kCoinbaseSender, alice.address, 50, bytes{}, 0, 0};
         Block funding = mine_block(1, orch.chain_manager_.latest_hash(),
                                    static_cast<uint64_t>(1700000000 + i),
                                    orch.chain_manager_.next_block_difficulty(),

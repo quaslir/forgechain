@@ -15,8 +15,9 @@ struct Transaction {
   uint64_t amount_;
   bytes signature_;
   uint64_t fee_;
+  uint64_t nonce_;
   Transaction(str sender, str recipient, uint64_t amount,
-              core::bytes sender_public_key, uint64_t fee);
+              core::bytes sender_public_key, uint64_t fee, uint64_t nonce);
   [[nodiscard]] bytes serialize_for_signing() const;
   [[nodiscard]] bytes serialize() const;
   [[nodiscard]] static std::optional<Transaction>
@@ -24,5 +25,5 @@ struct Transaction {
   [[nodiscard]] crypto::HashBytes compute_hash() const;
   bool operator==(const Transaction &tx) const;
 };
-  [[nodiscard]] bool has_valid_signature(const Transaction&tx);
+[[nodiscard]] bool has_valid_signature(const Transaction &tx);
 } // namespace forgechain::core

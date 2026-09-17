@@ -11,11 +11,11 @@ using namespace forgechain::core;
 namespace {
 
 Transaction make_regular(const str &sender, uint64_t amount, uint64_t fee) {
-  return Transaction(sender, "recipient", amount, {}, fee);
+  return Transaction(sender, "recipient", amount, {}, fee, 0);
 }
 
 Transaction make_coinbase(uint64_t amount) {
-  return Transaction(kCoinbaseSender, "miner", amount, {}, 0);
+  return Transaction(kCoinbaseSender, "miner", amount, {}, 0, 0);
 }
 
 }  // namespace

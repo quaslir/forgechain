@@ -73,6 +73,7 @@ public:
   [[nodiscard]] BlockTemplate block_template(size_t max_txs) const;
   [[nodiscard]] std::vector<core::Transaction>
   transactions_for_block(size_t limit) const;
+  [[nodiscard]] uint64_t next_nonce(const crypto::str &address) const;
 
 private:
   std::vector<core::Transaction> select_transactions(
@@ -84,7 +85,7 @@ private:
   [[nodiscard]] std::vector<core::Block> find_fork_tips(
       const core::Block &start) const; // MUST be called with orphan_mutex_ !!!
   [[nodiscard]] size_t valid_prefix_length(const core::ForkChain &fork,
-                                   uint64_t now) const;
+                                           uint64_t now) const;
   core::Blockchain blockchain_;
   core::Mempool mempool_;
   core::OrphanPool orphan_pool_;

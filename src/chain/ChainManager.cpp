@@ -205,13 +205,14 @@ bool ChainManager::apply_block_to_ledger(const core::Block &block) {
 
   for (size_t i = 0; i < transactions.size(); i++) {
 
-      const auto&tx = transactions[i];
-      bool ok = tx.sender_ == core::kCoinbaseSender || core::has_valid_signature(tx);
-    if(!ok || !ledger_.apply_transaction(tx)) {
-        for(size_t j = i; j > 0; j--) {
-            ledger_.reverse_transaction(transactions[j - 1]);
-        }
-        return false;
+    const auto &tx = transactions[i];
+    bool ok =
+        tx.sender_ == core::kCoinbaseSender || core::has_valid_signature(tx);
+    if (!ok || !ledger_.apply_transaction(tx)) {
+      for (size_t j = i; j > 0; j--) {
+        ledger_.reverse_transaction(transactions[j - 1]);
+      }
+      return false;
     }
   }
 
@@ -238,9 +239,11 @@ BlockOutcome ChainManager::handle_fork_candidate(const core::Block &block) {
       if (result == std::nullopt)
         continue;
       size_t prefix = valid_prefix_length(*result, now);
-      if(prefix == 0) continue;
-      if(prefix < result->blocks.size()) {
-          result->blocks.erase(result->blocks.begin() + static_cast<long>(prefix), result->blocks.end());
+      if (prefix == 0)
+        continue;
+      if (prefix < result->blocks.size()) {
+        result->blocks.erase(result->blocks.begin() + static_cast<long>(prefix),
+                             result->blocks.end());
       }
       uint64_t work = core::fork_work(*result);
 
@@ -278,7 +281,8 @@ ChainManager::try_reorg(core::ForkChain &&fork_chain) {
   for (const auto &block : fork_chain.blocks) {
     new_hashes.push_back(block.hash_);
     for (const auto &tx : block.transactions_) {
-        if(tx.sender_ != core::kCoinbaseSender && !core::has_valid_signature(tx)) return std::nullopt;
+      if (tx.sender_ != core::kCoinbaseSender && !core::has_valid_signature(tx))
+        return std::nullopt;
       new_branch_hashes.insert(tx.compute_hash());
       new_branch_txs.push_back(tx);
     }
@@ -354,7 +358,7 @@ ChainManager::find_fork_tips(const core::Block &start) const {
   return tips;
 }
 size_t ChainManager::valid_prefix_length(const core::ForkChain &fork,
-                                 uint64_t now) const {
+                                         uint64_t now) const {
   auto height = blockchain_.find_height(fork.common_ancestor.hash_);
   if (!height.has_value())
     return 0;
@@ -391,5 +395,9 @@ BlockTemplate ChainManager::block_template(size_t max_txs) const {
   tmpl.transactions = select_transactions(max_txs);
 
   return tmpl;
+}
+uint64_t ChainManager::next_nonce(const crypto::str &address) const {
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  return ledger_.next_nonce(address);
 }
 } // namespace forgechain::chain

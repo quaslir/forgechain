@@ -36,6 +36,7 @@ add_forgechain_test_executable(core_tests
     core/BlockTest.cpp
     core/BlockchainTest.cpp
     core/LedgerTest.cpp
+    core/LedgerNonceTest.cpp
     core/MempoolTest.cpp
     core/OrphanPoolTest.cpp
     core/ForkResolutionTest.cpp

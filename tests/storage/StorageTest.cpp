@@ -63,7 +63,7 @@ TEST(Storage, SaveThenLoadBlockRoundTripsExactly) {
   TempDbPath db;
   Storage storage(db.path());
 
-  Transaction tx("alice", "bob", 100, {}, 5);
+  Transaction tx("alice", "bob", 100, {}, 5, 0);
   Block block = make_block(HashBytes{}, 1700000000, {tx});
 
   storage.save_block(block, 0);
@@ -148,8 +148,8 @@ TEST(Storage, BlockWithMultipleTransactionsRoundTrips) {
   TempDbPath db;
   Storage storage(db.path());
 
-  Transaction tx1("alice", "bob", 100, {}, 5);
-  Transaction tx2("bob", "carol", 30, {}, 2);
+  Transaction tx1("alice", "bob", 100, {}, 5, 0);
+  Transaction tx2("bob", "carol", 30, {}, 2, 0);
   Block block = make_block(HashBytes{}, 1000, {tx1, tx2});
   storage.save_block(block, 0);
 

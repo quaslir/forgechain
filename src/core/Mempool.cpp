@@ -13,7 +13,8 @@ namespace forgechain::core {
 Mempool::Mempool(size_t max_size) : max_size_(max_size) {}
 
 bool Mempool::add_transaction(const Transaction &tx) {
-if(!has_valid_signature(tx)) return false;
+  if (!has_valid_signature(tx))
+    return false;
   if (has_transaction(tx.compute_hash()))
     return false;
 

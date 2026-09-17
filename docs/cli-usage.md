@@ -113,7 +113,7 @@ hex-encoded public key on the second.
 
 | Command | Description |
 |---|---|
-| `send <address> <amount> [fee]` | Build, sign, and submit a transaction sending `<amount>` from this wallet's address to `<address>`, with an optional `<fee>` (defaults to `0` if omitted). Prints `sent` on success, `rejected by node` if the node's RPC server accepted the connection but rejected the transaction (e.g. malformed), or `network error` if the connection itself failed. |
+| `send <address> <amount> [fee]` | Build, sign, and submit a transaction sending `<amount>` from this wallet's address to `<address>`, with an optional `<fee>` (defaults to `0` if omitted). The transaction's nonce (see §6) is fetched from the node first, so a failed or unreachable node makes the whole command fail rather than send a transaction with a guessed nonce. Prints `sent` on success, `rejected by node` if the node's RPC server accepted the connection but rejected the transaction (e.g. malformed), or `network error` if the connection itself failed -- including when the nonce could not be fetched. |
 | `balance` | Query and print this wallet's own balance via RPC. Prints `UNKNOWN` if the node has no record of this address, or `network error` on a connection failure. |
 | `height` | Query and print the connected node's current chain height. |
 | `peers` | Query and print the connected node's current P2P peer count. This is a bare number over RPC -- to see the peers themselves, use the node's own `peers` command on its stdin. |
@@ -153,6 +153,7 @@ new one is set.
 | Command | Request | Response |
 |---|---|---|
 | Get balance | `GETBALANCE <address>\n` | `<amount>\n` if known, `UNKNOWN\n` if not, `ERROR_EMPTY_ADDRESS\n` if no address was given |
+| Get next nonce | `GETNONCE <address>\n` | `<nonce>\n`, or `ERROR_EMPTY_ADDRESS\n` if no address was given |
 | Submit transaction | `SUBMITTX <hex-encoded serialized transaction>\n` | `OK\n` if accepted for processing, `ERROR_EMPTY_PAYLOAD\n` / `ERROR_INVALID_HEX\n` / `ERROR_INVALID_PAYLOAD\n` on malformed input |
 | Chain height | `HEIGHT\n` | `<height>\n` |
 | Peer count | `PEERS\n` | `<count>\n` |
@@ -160,6 +161,11 @@ new one is set.
 
 (When a token is configured, prepend `<token> ` to any of the request lines
 above.)
+
+`GETNONCE` reports the nonce the address's next transaction must carry (see
+§6). Unlike `GETBALANCE` there is no `UNKNOWN`: an address nobody has heard
+of is simply at `0`. A wallet calls this before signing, so `SUBMITTX` is
+normally preceded by a `GETNONCE` on its own connection.
 
 `PEERS` over RPC returns a bare count, while the node's interactive `peers`
 command lists the peers themselves with addresses and direction. The two are
@@ -260,7 +266,32 @@ its peers' fresh blocks rejected (clock behind) or have its own mined
 blocks rejected by peers (clock ahead). Keep node clocks synchronized
 (NTP) -- a few seconds of skew is harmless, minutes is not.
 
-## 6. Example: two nodes and a wallet
+## 6. Transaction nonces
+
+Every transaction carries a nonce: the number of transactions its sender had
+already made. The first transaction from an address uses `0`, the next `1`,
+and so on. A transaction is only valid when its nonce matches the sender's
+current count, which is what stops an old signed transaction from being
+submitted again later to debit the sender a second time. It is also what
+lets a sender pay the same recipient the same amount twice -- without a
+nonce the two transactions would be byte-for-byte identical.
+
+The wallet handles this: `send` asks the node for the address's next nonce
+before signing. Nothing to configure, but two consequences are worth
+knowing.
+
+**One transaction at a time.** The count advances when a transaction is
+*mined*, not when it is submitted. Sending twice in a row without waiting
+for a block gives both transactions the same nonce, and the second is
+rejected. Check `balance` and wait for it to reflect the first transfer
+before sending again.
+
+**Balance lags behind.** Right after `send`, `balance` still shows the old
+amount: the transaction is in the mempool, not yet in a block. On a mining
+node the amount changes within a block or two -- and on a node that also
+mines to this address, the mining reward moves it up at the same time.
+
+## 7. Example: two nodes and a wallet
 
 ```
 # Node A: listens on 8000, RPC on 8090, mines, pays itself
@@ -365,6 +396,23 @@ kill -9 <pid>
 
 # B catches up on connect. If A was more than 2000 blocks ahead, B keeps
 # pulling the rest in rounds; `height` on B climbs until it matches A.
+```
+
+### Example: sending twice
+
+```
+>>> balance
+500
+>>> send <recipient> 100
+sent
+>>> send <recipient> 50
+rejected by node          # same nonce as the first: still unmined
+
+# after a block arrives:
+>>> balance
+400
+>>> send <recipient> 50
+sent
 ```
 
 ### Example: watching difficulty adjust

@@ -11,10 +11,11 @@
 #include <utility>
 namespace forgechain::core {
 Transaction::Transaction(str sender, str recipient, uint64_t amount,
-                         core::bytes sender_public_key, uint64_t fee)
+                         core::bytes sender_public_key, uint64_t fee,
+                         uint64_t nonce)
     : sender_(std::move(sender)), recipient_(std::move(recipient)),
       sender_public_key_(std::move(sender_public_key)), amount_(amount),
-      fee_(fee) {}
+      fee_(fee), nonce_(nonce) {}
 crypto::bytes Transaction::serialize_for_signing() const {
 
   crypto::bytes out;
@@ -38,6 +39,9 @@ crypto::bytes Transaction::serialize_for_signing() const {
   out.insert(out.end(), sender_public_key_.begin(), sender_public_key_.end());
   out.insert(out.end(), reinterpret_cast<const uint8_t *>(&fee_),
              reinterpret_cast<const uint8_t *>(&fee_) + sizeof(fee_));
+
+  out.insert(out.end(), reinterpret_cast<const uint8_t *>(&nonce_),
+             reinterpret_cast<const uint8_t *>(&nonce_) + sizeof(nonce_));
   return out;
 }
 crypto::bytes Transaction::serialize() const {
@@ -107,6 +111,10 @@ Transaction::deserialize(const crypto::bytes &payload) {
     return std::nullopt;
   auto fee = *reinterpret_cast<const uint64_t *>(payload.data() + offset);
   offset += sizeof(uint64_t);
+  if (payload.size() < offset + sizeof(uint64_t))
+    return std::nullopt;
+  auto nonce = *reinterpret_cast<const uint64_t *>(payload.data() + offset);
+  offset += sizeof(nonce);
 
   if (payload.size() < offset + sizeof(uint32_t))
     return std::nullopt;
@@ -124,7 +132,8 @@ Transaction::deserialize(const crypto::bytes &payload) {
   if (payload.size() != offset)
     return std::nullopt;
 
-  Transaction tx{sender, recipient, amount, std::move(sender_public_key), fee};
+  Transaction tx{sender, recipient, amount, std::move(sender_public_key),
+                 fee,    nonce};
   tx.signature_ = std::move(signature);
   return tx;
 }
@@ -134,13 +143,16 @@ crypto::HashBytes Transaction::compute_hash() const {
 bool Transaction::operator==(const Transaction &tx) const {
   return sender_ == tx.sender_ && recipient_ == tx.recipient_ &&
          amount_ == tx.amount_ && signature_ == tx.signature_ &&
-         fee_ == tx.fee_;
+         fee_ == tx.fee_ && nonce_ == tx.nonce_;
 }
 
-bool has_valid_signature(const Transaction&tx) {
-    if(tx.sender_ == kCoinbaseSender) return false;
-    if(crypto::derive_address(tx.sender_public_key_) != tx.sender_) return false;
-    return crypto::verify(tx.serialize_for_signing(), tx.signature_, tx.sender_public_key_);
+bool has_valid_signature(const Transaction &tx) {
+  if (tx.sender_ == kCoinbaseSender)
+    return false;
+  if (crypto::derive_address(tx.sender_public_key_) != tx.sender_)
+    return false;
+  return crypto::verify(tx.serialize_for_signing(), tx.signature_,
+                        tx.sender_public_key_);
 }
 
 } // namespace forgechain::core
