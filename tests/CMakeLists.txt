@@ -64,6 +64,7 @@ add_forgechain_test_executable(network_tests
     network/PropagationTest.cpp
     network/NodeTest.cpp
     network/NodeReorgLedgerTest.cpp
+    network/GetBlocksTest.cpp
 )
 
 add_forgechain_test_executable(app_tests
