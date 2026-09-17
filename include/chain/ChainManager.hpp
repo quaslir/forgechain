@@ -79,6 +79,7 @@ public:
   [[nodiscard]] std::vector<core::Block>
   blocks_after_locator(const std::vector<crypto::HashBytes> &locator,
                        size_t limit) const;
+  [[nodiscard]] bool adopt_branch(std::vector<core::Block> &&blocks);
 
 private:
   std::vector<core::Transaction> select_transactions(
