@@ -110,11 +110,14 @@ void Orchestrator::mining_loop() {
       tmpl.transactions.insert(tmpl.transactions.begin(), coinbase);
     }
     state_lock.unlock();
-    core::Block mined = consensus::mine_block(
-        1, tmpl.prev_hash, tmpl.timestamp, tmpl.difficulty, tmpl.transactions);
-    node_.submit_block(mined);
+    auto mined = consensus::mine_block(
+        1, tmpl.prev_hash, tmpl.timestamp, tmpl.difficulty, tmpl.transactions, [this, expected = tmpl.tip_version] {
+            return !running_.load() || chain_manager_.tip_version() != expected;
+        });
+    if(!mined.has_value()) continue;
+    node_.submit_block(*mined);
 
-    if (chain_manager_.has_block(mined.hash_)) {
+    if (chain_manager_.has_block(mined->hash_)) {
       log_.log("MINE",
                "block ACCEPTED, height now " + std::to_string(tmpl.height + 1));
     } else {

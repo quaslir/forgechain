@@ -71,6 +71,7 @@ BlockOutcome ChainManager::submit_block(const core::Block &block) {
       }
       auto saved{block};
       blockchain_.add_block(std::move(saved));
+      tip_version_.store(tip_version_.load() + 1);
       outcome.status = BlockOutcome::Status::Accepted;
       outcome.to_broadcast.push_back(block.hash_);
 
@@ -102,6 +103,7 @@ bool ChainManager::restore_block(core::Block &&block) {
   if (!apply_block_to_ledger(block))
     return false;
   blockchain_.add_block(std::move(block));
+  tip_version_.store(tip_version_.load() + 1);
   return true;
 }
 
@@ -293,6 +295,7 @@ ChainManager::try_reorg(core::ForkChain &&fork_chain) {
   if (!reorganize_result.has_value())
     return std::nullopt;
 
+  tip_version_.store(tip_version_.load() + 1);
   std::unordered_set<core::HashBytes, crypto::HashBytesHasher> discarded_hashes;
 
   for (const auto &block : *reorganize_result) {
@@ -394,7 +397,7 @@ BlockTemplate ChainManager::block_template(size_t max_txs) const {
                     1);
 
   tmpl.transactions = select_transactions(max_txs);
-
+  tmpl.tip_version = tip_version_.load();
   return tmpl;
 }
 uint64_t ChainManager::next_nonce(const crypto::str &address) const {
@@ -461,5 +464,9 @@ bool ChainManager::adopt_branch(std::vector<core::Block> &&blocks) {
   }
 
   return try_reorg(std::move(fork)).has_value();
+}
+
+uint64_t ChainManager::tip_version() const {
+return tip_version_.load();
 }
 } // namespace forgechain::chain

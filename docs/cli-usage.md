@@ -23,9 +23,9 @@ plain-text RPC protocol that connects them.
 
 `Ctrl+C` (SIGINT) triggers a graceful shutdown: mining and RPC threads are
 stopped and joined, and all peer connections are closed before the process
-exits. A mining node finishes the block it is currently working on before
-its mining thread stops, so at high difficulty shutdown can take up to
-roughly one block interval. There is no save step on shutdown -- with `--db-path`, the database is
+exits. A mining node abandons the block it is working on: the mining thread
+checks for shutdown every 65,536 hashes, so it stops within a fraction of a
+second even at high difficulty. There is no save step on shutdown -- with `--db-path`, the database is
 already up to date with every accepted block, so a clean stop and an unclean
 one (a crash, `kill -9`) leave the same data on disk.
 
@@ -107,9 +107,11 @@ process; that is the network agreeing on the heavier chain, not an error.
 
 Two things to know when watching this happen:
 
-- Right after a catch-up, a mining node usually logs one or two
-  `block REJECTED (stale or invalid)` lines. It was mining on the old tip
-  while the switch happened and finished a block nobody wants. Harmless.
+- Right after a catch-up, a mining node drops the block it was working on
+  and starts on the new tip; it does not log a `REJECTED` line for it. A
+  `block REJECTED (stale or invalid)` line now means a real race: another
+  block became the tip in the instant between the miner's last check and
+  its submission. Harmless, and rare.
 - `block <height>` prints a block's hash, so comparing the same height on
   two nodes tells you in one command whether they agree.
 
@@ -443,7 +445,6 @@ kill -9 <pid>
 [..] [PEER] connected to 127.0.0.1:8000
 [..] [MINE] block ACCEPTED, height now 153      # its own short chain
 [..] [SYNC] 668 block(s) received, adopted, height now 669
-[..] [MINE] block REJECTED (stale or invalid)   # mined on the old tip
 
 # From here both nodes stay within a block or two of each other.
 >>> height
