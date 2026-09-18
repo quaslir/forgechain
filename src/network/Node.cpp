@@ -117,6 +117,7 @@ void Node::cleaner_loop() {
 void Node::ping_loop() {
   auto last_gossip = std::chrono::steady_clock::now();
   while (running_) {
+    std::vector<std::shared_ptr<Peer>> to_ping;
     {
       std::lock_guard<std::mutex> lock(peers_mutex_);
 
@@ -128,10 +129,15 @@ void Node::ping_loop() {
           continue;
         }
         if (peer_entry.peer->elapsed() >= PING_INTERVAL) {
-          send_msg(peer_entry.peer.get(), MessageType::PING, {});
+          to_ping.push_back(peer_entry.peer);
         }
       }
     }
+
+    for (const auto &peer : to_ping) {
+      send_msg(peer.get(), MessageType::PING, {});
+    }
+
     auto now = std::chrono::steady_clock::now();
     if (now - sync_.last_sync >= SYNC_INTERVAL) {
       request_sync();
@@ -335,6 +341,7 @@ std::vector<crypto::str> Node::book() const {
 bool Node::send_msg(Peer *peer, MessageType type,
                     const crypto::bytes &payload) {
   Message msg{.type = type, .payload = payload};
+  std::lock_guard<std::mutex> write_lock(peer->write_mutex());
   return send_message(peer->socket().fd(), msg);
 }
 
@@ -343,12 +350,20 @@ void Node::broadcast_inv(Peer *exclude, InventoryItemType type,
   InventoryItem item{.type = type, .hash = hash};
   std::vector<InventoryItem> items{item};
   crypto::bytes payload = serialize_inventory(items);
-  std::lock_guard<std::mutex> lock(peers_mutex_);
+  std::vector<std::shared_ptr<Peer>> targets;
 
-  for (const auto &peer_entry : peers_) {
-    if (peer_entry.peer.get() == exclude || !peer_entry.peer->is_alive())
-      continue;
-    send_msg(peer_entry.peer.get(), MessageType::INV, payload);
+  {
+    std::lock_guard<std::mutex> lock(peers_mutex_);
+
+    for (const auto &peer_entry : peers_) {
+      if (peer_entry.peer.get() == exclude || !peer_entry.peer->is_alive())
+        continue;
+      targets.push_back(peer_entry.peer);
+    }
+  }
+
+  for (const auto &peer : targets) {
+    send_msg(peer.get(), MessageType::INV, payload);
   }
 }
 
