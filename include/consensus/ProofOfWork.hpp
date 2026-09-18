@@ -7,9 +7,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <vector>
-#include <limits>
 namespace forgechain::consensus {
 using forgechain::core::Block;
 using forgechain::crypto::HashBytes;

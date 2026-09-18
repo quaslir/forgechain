@@ -17,7 +17,9 @@ HashBytes fakeHash(uint8_t seed) {
     h[0] = seed;
     return h;
 }
-
+Block orphanAt(uint8_t parentSeed, uint64_t ts) {
+    return Block(1, fakeHash(parentSeed), ts, {});
+}
 }  // namespace
 
 TEST(OrphanPool, StartsEmpty) {
@@ -241,4 +243,59 @@ TEST(OrphanPool, ChildrenOfDoesNotReturnGrandchildren) {
 
     ASSERT_EQ(children.size(), 1u);
     EXPECT_EQ(children[0].hash_, child.hash_);
+}
+
+TEST(OrphanPool, CountNeverExceedsMaxSize) {
+    OrphanPool pool(3);
+    for (uint64_t i = 0; i < 5; i++)
+        pool.add_orphan(orphanAt(0x01, 1700000000 + i));
+    EXPECT_EQ(pool.orphan_count(), 3u);
+}
+
+TEST(OrphanPool, EvictsOldestFirst) {
+    OrphanPool pool(3);
+    std::vector<HashBytes> hashes;
+    for (uint64_t i = 0; i < 5; i++) {
+        Block b = orphanAt(0x01, 1700000000 + i);
+        hashes.push_back(b.hash_);
+        pool.add_orphan(std::move(b));
+    }
+    EXPECT_FALSE(pool.has_orphan(hashes[0]));
+    EXPECT_FALSE(pool.has_orphan(hashes[1]));
+    EXPECT_TRUE(pool.has_orphan(hashes[2]));
+    EXPECT_TRUE(pool.has_orphan(hashes[3]));
+    EXPECT_TRUE(pool.has_orphan(hashes[4]));
+}
+
+TEST(OrphanPool, RemoveKeepsEvictionOrderConsistent) {
+    OrphanPool pool(3);
+    Block a = orphanAt(0x01, 1700000001), b = orphanAt(0x01, 1700000002),
+          c = orphanAt(0x01, 1700000003), d = orphanAt(0x01, 1700000004);
+    HashBytes ha = a.hash_, hb = b.hash_, hc = c.hash_, hd = d.hash_;
+    pool.add_orphan(std::move(a));
+    pool.add_orphan(std::move(b));
+    pool.add_orphan(std::move(c));
+    pool.remove_orphan(hb);
+    pool.add_orphan(std::move(d));
+
+    EXPECT_EQ(pool.orphan_count(), 3u);
+    EXPECT_TRUE(pool.has_orphan(ha)) << "removing B must not leave a stale entry that shadows A";
+    EXPECT_TRUE(pool.has_orphan(hc));
+    EXPECT_TRUE(pool.has_orphan(hd));
+}
+
+TEST(OrphanPool, ReAddingDoesNotRefreshAge) {
+    OrphanPool pool(2);
+    Block a = orphanAt(0x01, 1700000001), b = orphanAt(0x01, 1700000002),
+          c = orphanAt(0x01, 1700000003);
+    HashBytes ha = a.hash_, hb = b.hash_, hc = c.hash_;
+    pool.add_orphan(std::move(a));
+    pool.add_orphan(std::move(b));
+    pool.add_orphan(Block(1, fakeHash(0x01), 1700000001, {}));
+    pool.add_orphan(std::move(c));
+
+    EXPECT_EQ(pool.orphan_count(), 2u);
+    EXPECT_FALSE(pool.has_orphan(ha)) << "A is still the oldest and must be evicted";
+    EXPECT_TRUE(pool.has_orphan(hb));
+    EXPECT_TRUE(pool.has_orphan(hc));
 }

@@ -2,12 +2,19 @@
 #include "core/Block.hpp"
 #include "crypto/CommonTypes.hpp"
 #include <cstddef>
+#include <list>
 #include <optional>
 #include <unordered_map>
 #include <vector>
 namespace forgechain::core {
+static constexpr auto kDefaultMaxOrphans = 1000;
+struct Entry {
+  Block block;
+  std::list<HashBytes>::iterator pos;
+};
 class OrphanPool {
 public:
+  explicit OrphanPool(size_t max_size = kDefaultMaxOrphans);
   void add_orphan(Block &&block);
   [[nodiscard]] bool has_orphan(const crypto::HashBytes &hash) const;
   [[nodiscard]] std::optional<Block>
@@ -22,8 +29,10 @@ public:
   children_of(const crypto::HashBytes &hash) const;
 
 private:
-  std::unordered_map<crypto::HashBytes, Block, crypto::HashBytesHasher>
+  std::list<crypto::HashBytes> order_;
+  std::unordered_map<crypto::HashBytes, Entry, crypto::HashBytesHasher>
       orphan_pool_;
+  size_t max_size_;
 };
 
 } // namespace forgechain::core

@@ -9,6 +9,7 @@
 #include "core/Transaction.hpp"
 #include "crypto/CommonTypes.hpp"
 #include "storage/Storage.hpp"
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -16,7 +17,6 @@
 #include <optional>
 #include <utility>
 #include <vector>
-#include <atomic>
 namespace forgechain::chain {
 
 struct BlockOutcome {
@@ -83,6 +83,7 @@ public:
                        size_t limit) const;
   [[nodiscard]] bool adopt_branch(std::vector<core::Block> &&blocks);
   [[nodiscard]] uint64_t tip_version() const;
+
 private:
   std::vector<core::Transaction> select_transactions(
       size_t limit) const; // MUST be called with chain_mutex_!!!
@@ -107,6 +108,6 @@ private:
   std::function<const core::Block &(size_t index)>
       block_at_callback_; // MUST be called with chain_mutex_!!!
 
-    std::atomic<uint64_t> tip_version_{0};
+  std::atomic<uint64_t> tip_version_{0};
 };
 } // namespace forgechain::chain
