@@ -36,16 +36,25 @@ struct Sync {
   size_t sync_cursor{0};
 };
 
+struct SyncState {
+  bool active{false};
+  std::shared_ptr<Peer> peer{nullptr};
+  std::vector<core::Block> buffer{};
+  std::chrono::steady_clock::time_point last_block{};
+};
+
 using VectorPeers = std::vector<PeerEntry>;
 constexpr std::chrono::milliseconds CLEANER_TIMEOUT =
     std::chrono::milliseconds(500);
 constexpr auto PING_INTERVAL = std::chrono::seconds(5);
 constexpr auto PING_TIMEOUT = std::chrono::seconds(40);
 constexpr auto SYNC_INTERVAL = std::chrono::seconds(8);
+constexpr auto SYNC_IDLE_TIMEOUT = std::chrono::milliseconds(300);
 constexpr auto CONNECT_INTERVAL = std::chrono::milliseconds(1000);
 constexpr size_t TARGET_OUTBOUND_PEERS = 8;
 constexpr auto GOSSIP_INTERVAL = std::chrono::seconds(30);
 constexpr size_t MAX_BLOCKS_PER_RESPONSE = 2000;
+
 class Node {
 public:
   Node(uint16_t listen_port, VersionInfo info, chain::ChainManager &chain);
@@ -93,11 +102,15 @@ private:
   void send_peer_list(Peer *peer, const PeerAddress &peer_addr);
   void request_sync();
   bool wait_or_stop(std::chrono::milliseconds duration);
+  [[nodiscard]] bool start_sync_state(std::shared_ptr<Peer> peer);
+  void reset_sync_state();
+  void finish_sync_if_due();
   uint16_t listen_port_;
   VersionInfo info_;
   TcpSocket listener_{-1};
   chain::ChainManager &chain_;
   VectorPeers peers_;
+  SyncState sync_state_{};
   std::atomic<bool> running_{false};
   std::atomic<bool> stopping_{false};
   std::thread accept_thread_;
@@ -106,6 +119,7 @@ private:
   std::thread connect_thread_;
   mutable std::mutex peers_mutex_;
   mutable std::mutex shutdown_mutex_;
+  mutable std::mutex sync_mutex_;
   std::condition_variable shutdown_cv_;
   AddressBook address_book_;
   std::function<void(const crypto::str &, const crypto::str &)> logger_;

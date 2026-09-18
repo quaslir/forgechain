@@ -6,6 +6,7 @@ add_library(core
    Mempool.cpp
    OrphanPool.cpp
    ForkResolution.cpp
+   BlockLocator.cpp
 )
 
 target_include_directories(core PUBLIC ${CMAKE_SOURCE_DIR}/src)

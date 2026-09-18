@@ -2,6 +2,7 @@
 #include "consensus/ConsensusParams.hpp"
 #include "consensus/ProofOfWork.hpp"
 #include "core/Block.hpp"
+#include "core/BlockLocator.hpp"
 #include "core/Blockchain.hpp"
 #include "core/ForkResolution.hpp"
 #include "core/Ledger.hpp"
@@ -399,5 +400,66 @@ BlockTemplate ChainManager::block_template(size_t max_txs) const {
 uint64_t ChainManager::next_nonce(const crypto::str &address) const {
   std::lock_guard<std::mutex> chain_lock(chain_mutex_);
   return ledger_.next_nonce(address);
+}
+
+std::vector<crypto::HashBytes> ChainManager::locator() const {
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  return core::build_locator(blockchain_);
+}
+std::vector<core::Block> ChainManager::blocks_after_locator(
+    const std::vector<crypto::HashBytes> &locator, size_t limit) const {
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  auto match = core::find_locator_match(blockchain_, locator);
+  if (!match.has_value())
+    return {};
+  size_t from = *match + 1;
+  size_t size = blockchain_.size();
+  if (from >= size)
+    return {};
+  std::vector<core::Block> blocks;
+  size_t end = std::min(size, from + limit);
+  blocks.reserve(end - from);
+
+  for (size_t i = from; i < end; i++) {
+    blocks.push_back(blockchain_.at(i));
+  }
+  return blocks;
+}
+
+bool ChainManager::adopt_branch(std::vector<core::Block> &&blocks) {
+  std::lock_guard<std::mutex> chain_lock(chain_mutex_);
+  if (blocks.empty())
+    return false;
+  size_t start = 0;
+
+  while (start < blocks.size() && blockchain_.has_block(blocks[start].hash_)) {
+    start++;
+  }
+
+  if (start == blocks.size())
+    return false;
+
+  auto height = blockchain_.find_height(blocks[start].prev_hash_);
+  if (!height.has_value())
+    return false;
+
+  for (size_t i = start + 1; i < blocks.size(); i++) {
+    if (blocks[i].prev_hash_ != blocks[i - 1].hash_)
+      return false;
+  }
+
+  core::ForkChain fork{
+      .blocks = {blocks.begin() + static_cast<long>(start), blocks.end()},
+      .common_ancestor = blockchain_.at(*height)};
+
+  size_t prefix = valid_prefix_length(fork, clock_());
+  if (prefix == 0)
+    return false;
+  if (prefix < fork.blocks.size()) {
+    fork.blocks.erase(fork.blocks.begin() + static_cast<long>(prefix),
+                      fork.blocks.end());
+  }
+
+  return try_reorg(std::move(fork)).has_value();
 }
 } // namespace forgechain::chain

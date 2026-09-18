@@ -59,6 +59,7 @@ private:
   void handle_set_secret_key_command(crypto::str &&key);
   void handle_addrbook_command();
   void handle_ledger_command();
+  void handle_block_command(size_t height);
   OrchestratorConfig config_;
   demo::DemoLog log_;
   std::optional<storage::Storage> storage_;

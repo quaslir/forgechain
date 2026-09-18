@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 namespace forgechain::core {
 using forgechain::core::Block;
@@ -32,5 +33,7 @@ public:
 
 private:
   std::vector<Block> blocks_;
+  std::unordered_map<crypto::HashBytes, size_t, crypto::HashBytesHasher>
+      height_by_hash_;
 };
 } // namespace forgechain::core

@@ -147,27 +147,62 @@ bytes after `signature` is rejected.
 
 ### 3.5 `GETBLOCKS`
 
+Carries a **block locator**: hashes of blocks the sender has, newest
+first, so the receiver can work out where their two chains last agreed.
+
 | Field | Size | Type | Description |
 |---|---|---|---|
-| `from_height` | 8 bytes | `uint64` | Height the requester wants blocks from. |
+| `count` | 4 bytes | `uint32` | Number of hashes that follow. At most `kMaxLocatorHashes` (64); a larger value makes the payload invalid. |
+| hashes | `count * 32` bytes | raw bytes | Block hashes, ordered from the sender's tip backwards. |
 
-The responder replies with one `BLOCK` message per block, starting at
-`from_height`, up to its chain tip or `MAX_BLOCKS_PER_RESPONSE` (2000)
-blocks, whichever comes first. If `from_height` is at or above the
-responder's tip, it sends nothing.
+A payload whose length is not exactly `4 + count * 32` is invalid.
 
-The cap keeps a single request from turning into an unbounded burst of
-traffic. A requester that is further behind simply asks again: `GETBLOCKS`
-is sent both after a handshake with a taller peer (§4) and periodically
-to one connected peer at a time, rotating through them. The periodic
-request also recovers blocks missed on a live connection, such as an `INV`
-that was lost or a block that arrived before the clock allowed it
+### Building a locator
+
+The sender walks its own chain back from the tip: the first ten blocks one
+at a time, then doubling the step -- 2, 4, 8, 16 and so on -- and always
+ends with genesis. A chain of 100 blocks therefore yields heights 99 down
+to 90, then 88, 84, 76, 60, 28 and 0: sixteen hashes. A chain of 50,000
+yields fewer than forty.
+
+The spacing is dense near the tip and sparse further back because that is
+where disagreement lives. Two nodes fork a block or two apart routinely;
+they almost never disagree about a block a thousand deep. The locator
+spends its entries where precision matters and stays small enough for one
+message no matter how long the chain grows.
+
+### Answering a locator
+
+The receiver takes the **first** hash in the list that is also in its own
+chain. Since the list is ordered newest-first, that is the most recent
+block both nodes share. It then sends one `BLOCK` message per block from
+the height above it, up to its tip or `MAX_BLOCKS_PER_RESPONSE` (2000)
+blocks, whichever comes first.
+
+If no hash matches -- possible only when the two nodes have different
+genesis blocks, and so belong to different networks -- nothing is sent.
+If the match is the receiver's own tip, the sender is already up to date
+and nothing is sent either.
+
+The answer is a real shared block but not always the deepest one: the
+sparse tail may not offer a hash close to the actual fork point, so the
+receiver answers from further back and sends some blocks the requester
+already has. Those are dropped on arrival (§7.8). Paying for a handful of
+redundant blocks is cheaper than another round trip.
+
+A hash identifies a block together with its entire history, so a match is
+proof that the two chains are identical up to that point. This is what a
+height cannot do: at height 41,000 each node has *a* block, but not
+necessarily the same one. Before locators, two chains that had diverged
+more than `kMaxForkDepth` blocks back could never reconcile -- each kept
+answering from a height where it held a different block, and every answer
+was unusable.
+
+`GETBLOCKS` is sent after a handshake with a taller peer (§4) and
+periodically to one connected peer at a time, rotating through them. The
+periodic request also recovers blocks missed on a live connection, such as
+an `INV` that was lost or a block that arrived before the clock allowed it
 (§8.3).
-
-Note: this is a height, not a hash. Sending a height is simpler but
-assumes both sides agree on the chain below that point; a hash-based
-locator would be more robust against forks and is a candidate for a
-future protocol version.
 
 ### 3.6 `PING` / `PONG`
 
@@ -548,6 +583,42 @@ each one in turn via ordinary `GETDATA`/`BLOCK` exchange, rather than
 receiving only the final tip and being unable to link it back to their
 own chain.
 
+### 7.8 Catching up
+
+Blocks arrive two ways, and they are not handled by the same code.
+
+**Unsolicited blocks** — a new block announced by a peer — go through §7.1
+to §7.7: classified, held in the orphan pool if they fork, assembled
+backwards, and capped at `kMaxForkDepth`. The cap is what makes them cheap:
+a peer can send anything at any time, and a node must be able to dismiss
+nonsense without walking its whole history.
+
+**Requested blocks** — the answer to a `GETBLOCKS` the node sent itself —
+are different. The node knows it asked, knows which peer it asked, and the
+answer arrives as a run of `BLOCK` messages in order. It buffers them
+instead of feeding them in one at a time, and once the run ends (the peer
+goes quiet, the response hits its 2000-block cap, or the peer disconnects)
+it adopts the buffer as a single branch:
+
+1. Blocks already in the chain are skipped — the answer may start further
+   back than needed (§3.5).
+2. The first remaining block must attach to a block in the chain, and each
+   block after it to the one before. A branch with a gap, out of order, or
+   anchored nowhere is discarded whole.
+3. The branch is validated against the consensus rules using its own
+   history (§8.5) and truncated at its first invalid block.
+4. If what remains is heavier than the current chain, the node reorganizes
+   onto it (§7.5).
+
+Only the depth cap is lifted here; every other rule still applies, and a
+branch that fails any of them is rejected exactly as an unsolicited one
+would be. Lifting the cap is safe precisely because the node asked: these
+blocks are not an unprompted claim from a stranger but the answer to a
+question it posed, from a point in history it chose.
+
+A node runs at most one catch-up at a time. A second peer's answer while
+one is in flight would only compete for the same decision.
+
 ## 8. Consensus rules
 
 A block is valid only if it satisfies every rule in this section. The
@@ -781,13 +852,15 @@ look slower than it is, and the adjustment would drive difficulty down to
 - **The mempool does not check nonces against the ledger.** A transaction
   whose nonce is already spent is accepted into the mempool and occupies
   space until it is evicted, even though it can never be mined.
-- **Divergence deeper than `kMaxForkDepth` cannot be repaired.** Two nodes
-  whose chains share only an ancestor more than 100 blocks back never
-  reconcile: the walk back in §7.3 gives up at the cap, so neither adopts
-  the other's chain however much heavier it is, and both keep extending
-  their own history. This is reachable in practice — a node restarted from
-  a stored chain while the network moved on will sit at its stored height
-  forever. A hash-based `GETBLOCKS` locator (§3.5) plus a dedicated
-  catch-up path is required to fix it.
+- **A catch-up ends by going quiet.** The end of a `GETBLOCKS` answer is
+  inferred from a short idle gap rather than marked explicitly, so a peer
+  that stalls mid-answer has its partial branch adopted and the rest
+  arrives on the next periodic request. An explicit end-of-response message
+  would make this exact.
+- **A peer's height is only known from its handshake.** It is never
+  updated, so a peer that was behind when it connected is never asked for
+  a catch-up afterwards, however far ahead it gets. The handshake path
+  covers the common case, and that peer asking us keeps the pair in sync
+  in the other direction.
 - **Changing any rule in this section is a hard fork.** Chains and
   databases built under earlier rules are not valid under later ones.

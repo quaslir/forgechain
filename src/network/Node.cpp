@@ -107,7 +107,7 @@ void Node::cleaner_loop() {
     for (auto &worker : workers_to_join) {
       worker.join();
     }
-
+    finish_sync_if_due();
     if (!wait_or_stop(std::chrono::duration_cast<std::chrono::milliseconds>(
             CLEANER_TIMEOUT)))
       break;
@@ -205,12 +205,6 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
   auto peer = std::make_shared<Peer>(std::move(socket), *incoming_info, host);
   Peer *raw_peer = peer.get();
 
-  // sync between two peers
-  if (my_height < incoming_info->chain_height) {
-    if (!send_msg(raw_peer, MessageType::GETBLOCKS,
-                  serialize_getblocks(my_height)))
-      return false;
-  }
   PeerAddress candidate{.host = host, .port = incoming_info->listen_port};
   bool source_is_local = !AddressBook::is_routable(candidate);
   bool accepted{true};
@@ -262,6 +256,16 @@ bool Node::register_new_peer(TcpSocket &&socket, const crypto::str &host,
   }
 
   send_peer_list(raw_peer, candidate);
+
+  // sync between two peers
+  if (my_height < incoming_info->chain_height) {
+
+    if (start_sync_state(peer) &&
+        !send_msg(raw_peer, MessageType::GETBLOCKS,
+                  serialize_getblocks(chain_.locator()))) {
+      reset_sync_state();
+    }
+  }
   return true;
 }
 
@@ -397,6 +401,22 @@ void Node::handle_getdata(Peer *peer, const crypto::bytes &payload) {
   }
 }
 void Node::handle_block(Peer *peer, const crypto::bytes &payload) {
+  {
+    std::lock_guard<std::mutex> sync_lock(sync_mutex_);
+    if (sync_state_.active && sync_state_.peer.get() == peer) {
+      auto block = core::Block::deserialize(payload);
+      if (block.has_value()) {
+        sync_state_.buffer.push_back(std::move(*block));
+        if (sync_state_.buffer.size() >= MAX_BLOCKS_PER_RESPONSE) {
+          sync_state_.last_block =
+              std::chrono::steady_clock::now() - SYNC_IDLE_TIMEOUT;
+        } else
+          sync_state_.last_block = std::chrono::steady_clock::now();
+      }
+
+      return;
+    }
+  }
   auto block_container = core::Block::deserialize(payload);
   if (!block_container.has_value())
     return;
@@ -437,8 +457,8 @@ void Node::handle_getblocks(Peer *peer, const crypto::bytes &payload) {
   auto from_height_container = deserialize_getblocks(payload);
   if (!from_height_container.has_value())
     return;
-  auto blocks = chain_.blocks_from(static_cast<size_t>(*from_height_container),
-                                   MAX_BLOCKS_PER_RESPONSE);
+  auto blocks = chain_.blocks_after_locator(*from_height_container,
+                                            MAX_BLOCKS_PER_RESPONSE);
   for (const auto &block : blocks) {
     send_msg(peer, MessageType::BLOCK, block.serialize());
   }
@@ -534,12 +554,14 @@ void Node::send_peer_list(Peer *peer, const PeerAddress &peer_addr) {
 }
 
 void Node::request_sync() {
+  const auto my_height = static_cast<uint64_t>(chain_.chain_height());
   std::vector<std::shared_ptr<Peer>> targets;
   {
     std::lock_guard<std::mutex> peers_lock(peers_mutex_);
 
     for (const auto &entry : peers_) {
-      if (entry.peer->is_alive())
+      if (entry.peer->is_alive() &&
+          entry.peer->remote_version().chain_height > my_height)
         targets.push_back(entry.peer);
     }
   }
@@ -548,13 +570,66 @@ void Node::request_sync() {
     return;
 
   auto target = targets[sync_.sync_cursor++ % targets.size()];
-  send_msg(target.get(), MessageType::GETBLOCKS,
-           serialize_getblocks(chain_.chain_height()));
+  if (!start_sync_state(target))
+    return;
+  if (!send_msg(target.get(), MessageType::GETBLOCKS,
+                serialize_getblocks(chain_.locator())))
+    reset_sync_state();
 }
 bool Node::wait_or_stop(std::chrono::milliseconds duration) {
   std::unique_lock<std::mutex> lock(shutdown_mutex_);
   return !shutdown_cv_.wait_for(lock, duration, [this] { return !running_; });
 }
+
+bool Node::start_sync_state(std::shared_ptr<Peer> peer) {
+  std::lock_guard<std::mutex> sync_lock(sync_mutex_);
+  if (sync_state_.active)
+    return false;
+  sync_state_.active = true;
+  sync_state_.buffer.clear();
+  sync_state_.last_block = std::chrono::steady_clock::now();
+  sync_state_.peer = std::move(peer);
+  return true;
+}
+
+void Node::reset_sync_state() {
+  std::lock_guard<std::mutex> sync_lock(sync_mutex_);
+  sync_state_ = SyncState{};
+}
+
+void Node::finish_sync_if_due() {
+  std::vector<core::Block> buffer;
+
+  {
+    std::lock_guard<std::mutex> sync_lock(sync_mutex_);
+    if (!sync_state_.active)
+      return;
+
+    bool peer_dead = !sync_state_.peer || !sync_state_.peer->is_alive();
+    bool timed_out = std::chrono::steady_clock::now() - sync_state_.last_block >
+                     SYNC_IDLE_TIMEOUT;
+    if (!peer_dead && !timed_out) {
+      return;
+    }
+
+    buffer = std::move(sync_state_.buffer);
+    sync_state_ = SyncState{};
+  }
+
+  if (buffer.empty()) {
+    return;
+  }
+
+  size_t received = buffer.size();
+  bool adopted = chain_.adopt_branch(std::move(buffer));
+  if (logger_) {
+    logger_("SYNC", std::to_string(received) + " block(s) received, " +
+                        (adopted ? "adopted, height now " +
+                                       std::to_string(chain_.chain_height())
+                                 : "rejected"));
+  }
+}
+
 void Node::stop() {
   {
     std::lock_guard<std::mutex> lock(shutdown_mutex_);

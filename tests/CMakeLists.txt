@@ -41,6 +41,7 @@ add_forgechain_test_executable(core_tests
     core/OrphanPoolTest.cpp
     core/ForkResolutionTest.cpp
     core/TransactionFeeTest.cpp
+    core/BlockLocatorTest.cpp
 )
 
 add_forgechain_test_executable(consensus_tests
@@ -63,6 +64,7 @@ add_forgechain_test_executable(network_tests
     network/PropagationTest.cpp
     network/NodeTest.cpp
     network/NodeReorgLedgerTest.cpp
+    network/GetBlocksTest.cpp
 )
 
 add_forgechain_test_executable(app_tests
@@ -87,6 +89,7 @@ add_forgechain_test_executable(chain_tests
     chain/ChainManagerForkValidationTest.cpp
     chain/ChainManagerBlockTemplateTest.cpp
     chain/ChainManagerSignatureTest.cpp
+    chain/ChainManagerAdoptBranchTest.cpp
 )
 
 
