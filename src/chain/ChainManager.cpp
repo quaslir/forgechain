@@ -286,7 +286,10 @@ ChainManager::try_reorg(core::ForkChain &&fork_chain) {
     for (const auto &tx : block.transactions_) {
       if (tx.sender_ != core::kCoinbaseSender && !core::has_valid_signature(tx))
         return std::nullopt;
-      new_branch_hashes.insert(tx.compute_hash());
+      if (tx.sender_ != core::kCoinbaseSender) {
+        new_branch_hashes.insert(tx.compute_hash());
+      }
+
       new_branch_txs.push_back(tx);
     }
   }
@@ -300,6 +303,8 @@ ChainManager::try_reorg(core::ForkChain &&fork_chain) {
 
   for (const auto &block : *reorganize_result) {
     for (const auto &tx : block.transactions_) {
+      if (tx.sender_ == core::kCoinbaseSender)
+        continue;
       discarded_hashes.insert(tx.compute_hash());
     }
   }
@@ -311,7 +316,8 @@ ChainManager::try_reorg(core::ForkChain &&fork_chain) {
       if (new_branch_hashes.contains(tx->compute_hash()))
         continue;
       ledger_.reverse_transaction(*tx);
-      mempool_.add_transaction(*tx);
+      if (tx->sender_ != core::kCoinbaseSender)
+        mempool_.add_transaction(*tx);
     }
   }
 

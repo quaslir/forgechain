@@ -1,7 +1,7 @@
 # Docker multi-node harness
 
 Runs 4 isolated `forgechain` node containers on their own Docker network, so
-you can observe propagation, sync, and (later) fork resolution across real,
+you can observe propagation and sync across real,
 separate processes -- not multiple `Node` objects sharing one process
 (`PropagationTest.cpp`), and not two terminals sharing one host's loopback
 interface.
@@ -9,7 +9,7 @@ interface.
 ## Topology
 
 ```
-node1 (mines every 10s)
+node1 (mining)
   ^
   | node2 connects to node1
 node2
@@ -21,9 +21,12 @@ node3
 node4
 ```
 
-All four nodes mine (at different intervals: 10s/2s/5s/10s) and each has its
-own `--reward-address`, so each accumulates its own coinbase rewards
-independently. Blocks and transactions propagate outward through the chain
+All four nodes mine continuously (`--mine`) and each has its own
+`--reward-address`, so each accumulates its own coinbase rewards
+independently. How often blocks actually appear is governed by the chain's
+difficulty (`docs/cli-usage.md` §5), not by any per-node interval: the nodes
+are identical in this respect, and which of them finds a given block is a
+matter of luck. Blocks and transactions propagate outward through the chain
 via the same INV/GETDATA/BLOCK relay logic exercised in
 `PropagationTest.cpp`.
 
@@ -109,11 +112,11 @@ docker compose down -v
 ## Known limitations
 
 - This harness demonstrates propagation/sync across real, isolated
-  processes -- it does not yet exercise fork resolution or reorg. That
-  requires deliberately partitioning the network (e.g. via
+  processes; it does not exercise fork resolution or reorg. Doing that
+  would mean deliberately partitioning the network (e.g. via
   `docker network disconnect`) so two groups of nodes mine independently
-  before reconnecting -- see the network-partition-test issue for that
-  follow-up.
+  before reconnecting. Fork resolution is covered by the unit and
+  integration tests instead (`NodeReorg*`, `ChainManagerFork*`).
 - No `wallet` container is included here; sending a transaction between two
   demo nodes currently means running `wallet` on the host against a
   published RPC port (see above).

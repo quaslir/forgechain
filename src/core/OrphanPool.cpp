@@ -18,7 +18,7 @@ void OrphanPool::add_orphan(Block &&block) {
     if (oldest != orphan_pool_.end()) {
       orphan_pool_.erase(oldest);
     }
-          order_.pop_front();
+    order_.pop_front();
   }
 
   order_.push_back(hash);
