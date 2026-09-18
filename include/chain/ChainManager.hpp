@@ -16,6 +16,7 @@
 #include <optional>
 #include <utility>
 #include <vector>
+#include <atomic>
 namespace forgechain::chain {
 
 struct BlockOutcome {
@@ -31,6 +32,7 @@ struct BlockTemplate {
   size_t height{0};
   uint64_t timestamp{0};
   uint32_t difficulty{0};
+  uint64_t tip_version{0};
   std::vector<core::Transaction> transactions{};
 };
 
@@ -80,7 +82,7 @@ public:
   blocks_after_locator(const std::vector<crypto::HashBytes> &locator,
                        size_t limit) const;
   [[nodiscard]] bool adopt_branch(std::vector<core::Block> &&blocks);
-
+  [[nodiscard]] uint64_t tip_version() const;
 private:
   std::vector<core::Transaction> select_transactions(
       size_t limit) const; // MUST be called with chain_mutex_!!!
@@ -104,5 +106,7 @@ private:
 
   std::function<const core::Block &(size_t index)>
       block_at_callback_; // MUST be called with chain_mutex_!!!
+
+    std::atomic<uint64_t> tip_version_{0};
 };
 } // namespace forgechain::chain

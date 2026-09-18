@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -41,7 +42,7 @@ Block mine_block(uint32_t version, HashBytes prev_hash, uint64_t timestamp,
                  uint32_t difficulty,
                  std::vector<core::Transaction> transactions) {
   uint32_t nonce = 0;
-  constexpr uint32_t kMaxNonce = std::numeric_limits<uint32_t>::max();
+
   Block block{version, prev_hash, timestamp, std::move(transactions)};
   block.difficulty_ = difficulty;
   while (nonce < kMaxNonce) {
@@ -55,6 +56,37 @@ Block mine_block(uint32_t version, HashBytes prev_hash, uint64_t timestamp,
   }
   throw std::runtime_error(
       "mine_block: exhausted nonce range without finding a valid hash");
+}
+
+[[nodiscard]] std::optional<core::Block>
+mine_block(uint32_t version, HashBytes prev_hash, uint64_t timestamp,
+           uint32_t difficulty, std::vector<core::Transaction> transactions,
+           const std::function<bool()> &should_stop) {
+  uint32_t nonce = 0;
+  uint32_t timestamp_bumps = 0;
+  Block block{version, prev_hash, timestamp, std::move(transactions)};
+  block.difficulty_ = difficulty;
+
+  while(true) {
+      if(nonce % kCancelCheckInterval == 0 && should_stop) {
+          if(should_stop()) return std::nullopt;
+      }
+      block.nonce_ = nonce;
+      auto hash = block.compute_hash();
+      if(meets_target(hash, block.difficulty_)) {
+          block.hash_ = hash;
+          return block;
+      }
+
+      nonce++;
+      if(nonce == kMaxNonce) {
+          if(timestamp_bumps == kMaxTimestampBumps) return std::nullopt;
+          timestamp_bumps++;
+          block.timestamp_++;
+          nonce = 0;
+      }
+  }
+
 }
 
 uint32_t retarget(uint32_t old_difficulty, uint64_t actual_time_seconds,

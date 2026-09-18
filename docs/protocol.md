@@ -832,12 +832,28 @@ the miner. A miner that paused between blocks would make the network
 look slower than it is, and the adjustment would drive difficulty down to
 `min_difficulty`.
 
+A miner works on one template at a time and drops it as soon as it is
+stale. `ChainManager` keeps a tip version counter that increases every
+time the tip changes: a block extending the chain, a reorganization, or a
+block restored from storage. The template records the counter's value, and
+the miner compares it with the current one every 65,536 nonces, without
+taking any lock. If the counter has moved, or the node is shutting down,
+the miner abandons the block, submits nothing, and takes a fresh template
+at once. Cancellation is the normal path, not a failure, so there is no
+pause before the next template. A block is rejected as stale only in a real
+race: another block became the tip between the miner's last check and its
+submission.
+
+The nonce is a 32-bit field. If all 2^32 values fail, the miner adds one
+second to the block's timestamp, which changes the header and with it the
+whole space of hashes, and starts again from nonce 0. After 60 such
+increments, comfortably inside `max_future_drift` (§8.3), it gives up and
+takes a fresh template instead of producing a block that peers would
+reject for a timestamp too far ahead. This is not a rule change: any
+timestamp that satisfies §8.3 is valid, however the miner arrived at it.
+
 ### 8.8 Known limitations
 
-- **Stale mining is not interrupted.** A miner that receives a new tip
-  while working on a block finishes the stale block before starting on
-  the new tip; the result is rejected. At equilibrium difficulty this
-  wastes up to one block interval per competing block.
 - **The orphan pool is unbounded.** Branch validity (§8.5) is only checked
   once a branch connects to the chain, so blocks that never connect are
   held indefinitely. A size limit with eviction is required before this

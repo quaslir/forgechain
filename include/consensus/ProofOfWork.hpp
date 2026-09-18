@@ -7,15 +7,24 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <vector>
+#include <limits>
 namespace forgechain::consensus {
 using forgechain::core::Block;
 using forgechain::crypto::HashBytes;
 static constexpr uint64_t mining_reward = 50;
+static constexpr uint32_t kMaxNonce = std::numeric_limits<uint32_t>::max();
+static constexpr auto kCancelCheckInterval = 0xffff;
+static constexpr uint32_t kMaxTimestampBumps = 60;
 bool meets_target(const HashBytes &hash, uint32_t difficulty);
 Block mine_block(uint32_t version, HashBytes prev_hash, uint64_t timestamp,
                  uint32_t difficulty,
                  std::vector<core::Transaction> transactions);
+[[nodiscard]] std::optional<core::Block>
+mine_block(uint32_t version, HashBytes prev_hash, uint64_t timestamp,
+           uint32_t difficulty, std::vector<core::Transaction> transactions,
+           const std::function<bool()> &should_stop);
 uint32_t retarget(uint32_t old_difficulty, uint64_t actual_time_seconds,
                   uint64_t expected_time_seconds);
 uint64_t block_work(uint32_t difficulty);
