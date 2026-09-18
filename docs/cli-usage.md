@@ -79,18 +79,39 @@ A node picks up blocks from its peers in three ways:
 - **New blocks** are announced by the peer that accepted them and fetched
   immediately. This only covers blocks that appear while the connection is
   up.
-- **On connect**, if the other side's chain is taller, the node asks it for
-  every block above its own height.
-- **Periodically**, the node asks one connected peer -- a different one each
-  time, round-robin -- for blocks above its own height. This catches the
-  node up after anything it missed on a live connection (a lost
-  announcement, a stalled peer), without needing to reconnect.
+- **On connect**, if the other side's chain is taller, the node asks it to
+  catch it up.
+- **Periodically**, the node asks one connected taller peer -- a different
+  one each time, round-robin. This recovers anything missed on a live
+  connection (a lost announcement, a stalled peer) without reconnecting.
 
-A peer answers any single request with at most 2000 blocks. A node that is
-further behind than that catches up over several rounds, so a fresh node
-joining a long chain takes a while to reach the tip; watch `height` climb
-to see it progress. When the node is already in sync, the periodic request
-gets an empty answer and generates no block traffic.
+A request does not ask for a height. The node sends a list of hashes of
+blocks it has -- every one of the last ten, then at doubling intervals
+further back, ending at the genesis block -- and the peer replies with
+everything after the most recent block the two of them share. This is what
+lets nodes reconcile chains that diverged long ago: a height means nothing
+if each node holds a different block at it, but a matching hash proves the
+two chains are identical up to that point.
+
+A peer answers any single request with at most 2000 blocks. A node further
+behind than that catches up over several rounds; watch `height` climb to
+see it progress. When it is already in sync, the request gets an empty
+answer and generates no traffic.
+
+A node that has been offline while the network moved on -- restarted from
+`--db-path`, or on a laptop that was closed -- rejoins by asking whichever
+peer it connects to, and jumps to the network's chain in one step. The
+`SYNC` line in the log reports how many blocks arrived and the height
+afterwards. Its own blocks mined on the old chain are discarded in the
+process; that is the network agreeing on the heavier chain, not an error.
+
+Two things to know when watching this happen:
+
+- Right after a catch-up, a mining node usually logs one or two
+  `block REJECTED (stale or invalid)` lines. It was mining on the old tip
+  while the switch happened and finished a block nobody wants. Harmless.
+- `block <height>` prints a block's hash, so comparing the same height on
+  two nodes tells you in one command whether they agree.
 
 ## 2. `wallet`
 
@@ -341,9 +362,9 @@ transactions: 1
 ```
 
 Same hash on both nodes means the chains agree up to that height. Different
-hashes mean they diverged somewhere at or below it -- and if the fork point
-is more than 100 blocks back, they cannot reconcile on their own (see
-`protocol.md` §8.8).
+hashes mean they have diverged somewhere at or below it, and the next sync
+round will settle it: whichever chain carries more work wins, and the other
+node switches to it.
 
 ### Example: inspecting peer discovery
 
@@ -414,15 +435,23 @@ kill -9 <pid>
 ### Example: catching up after downtime
 
 ```
-# Node B is in sync with A, then stopped.
->>> quit
+# Node A has been mining for a while and is at height 669.
+./forgechain --port 8000 --mine --db-path node.db
 
-# A keeps mining for a while. Restart B pointed at A:
-./forgechain --port 8001 --connect 127.0.0.1 8000
+# Node B starts from nothing and connects:
+./forgechain --port 8001 --mine --connect 127.0.0.1 8000
+[..] [PEER] connected to 127.0.0.1:8000
+[..] [MINE] block ACCEPTED, height now 153      # its own short chain
+[..] [SYNC] 668 block(s) received, adopted, height now 669
+[..] [MINE] block REJECTED (stale or invalid)   # mined on the old tip
 
-# B catches up on connect. If A was more than 2000 blocks ahead, B keeps
-# pulling the rest in rounds; `height` on B climbs until it matches A.
+# From here both nodes stay within a block or two of each other.
+>>> height
+669
 ```
+
+The 153 blocks B mined on its own are gone: A's chain carried more work.
+Comparing `block 100` on both nodes now gives the same hash.
 
 ### Example: sending twice
 
