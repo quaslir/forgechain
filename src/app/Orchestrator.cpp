@@ -111,10 +111,12 @@ void Orchestrator::mining_loop() {
     }
     state_lock.unlock();
     auto mined = consensus::mine_block(
-        1, tmpl.prev_hash, tmpl.timestamp, tmpl.difficulty, tmpl.transactions, [this, expected = tmpl.tip_version] {
-            return !running_.load() || chain_manager_.tip_version() != expected;
+        1, tmpl.prev_hash, tmpl.timestamp, tmpl.difficulty, tmpl.transactions,
+        [this, expected = tmpl.tip_version] {
+          return !running_.load() || chain_manager_.tip_version() != expected;
         });
-    if(!mined.has_value()) continue;
+    if (!mined.has_value())
+      continue;
     node_.submit_block(*mined);
 
     if (chain_manager_.has_block(mined->hash_)) {

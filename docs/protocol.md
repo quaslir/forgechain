@@ -479,6 +479,15 @@ forever, even though it is complete and heavier.
 After a successful reorganization, every block that entered the chain is
 removed from the pool. Blocks on branches that lost stay in the pool.
 
+The pool holds at most `kDefaultMaxOrphans` (1000) blocks. Adding a block
+to a full pool evicts the oldest one, by insertion order; re-adding a block
+already in the pool replaces its contents without refreshing its age, so a
+peer resending the same block cannot keep it alive indefinitely. The limit
+is well above `kMaxForkDepth` (100), so a legitimate branch of the greatest
+depth the node will trace still fits with room to spare. Without a limit,
+blocks that never connect to the chain — which no other rule ever removes —
+accumulate for as long as the node runs.
+
 ### 7.3 Locating the common ancestor
 
 After a block is added to the orphan pool, the node attempts to trace a
@@ -854,10 +863,14 @@ timestamp that satisfies §8.3 is valid, however the miner arrived at it.
 
 ### 8.8 Known limitations
 
-- **The orphan pool is unbounded.** Branch validity (§8.5) is only checked
-  once a branch connects to the chain, so blocks that never connect are
-  held indefinitely. A size limit with eviction is required before this
-  network faces untrusted peers.
+- **The orphan pool admits blocks cheaply.** Its size is capped (§7.2), so
+  it can no longer grow without bound, but a block enters it after only its
+  proof of work against its own declared `difficulty_` has been checked:
+  the difficulty required at that height (§8.2) and the rest of §8.5 are
+  verified only once a branch connects to the chain. A peer can therefore
+  fill the pool with cheap low-difficulty blocks and evict a genuine
+  competing branch before it is fully assembled. Checking the declared
+  difficulty against the chain on entry would close this.
 - **Time-warp attacks** beyond what the median and the per-epoch clamp
   prevent are not addressed.
 - **A sender cannot have two transactions in flight.** The nonce counter

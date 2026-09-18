@@ -466,7 +466,5 @@ bool ChainManager::adopt_branch(std::vector<core::Block> &&blocks) {
   return try_reorg(std::move(fork)).has_value();
 }
 
-uint64_t ChainManager::tip_version() const {
-return tip_version_.load();
-}
+uint64_t ChainManager::tip_version() const { return tip_version_.load(); }
 } // namespace forgechain::chain
